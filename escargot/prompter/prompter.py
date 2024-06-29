@@ -1,11 +1,3 @@
-# Copyright (c) 2023 ETH Zurich.
-#                    All rights reserved.
-#
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
-#
-# main authors: Robert Gerstenberger, Nils Blach
-
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Dict, List
