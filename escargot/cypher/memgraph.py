@@ -31,5 +31,26 @@ class MemgraphClient:
         response = lm.get_response_texts(
                     lm.query(query, num_responses=1)
                 )
-        results = self.memgraph.execute_and_fetch(response)
-        return list(results)
+        response = response[0]
+        # Remove "Answer:" from the response
+        if response.startswith("Answer:"):
+            response= response[8:].strip()
+        
+        #remove ```cypher from the response
+        response = response.replace("```cypher", "")
+
+        #remove ``` from anywhere in the response
+        response = response.replace("```", "")
+
+        #remove \n from the response
+        response = response.replace("\n", "")
+        
+        memgraph_results = self.memgraph.execute_and_fetch(response)
+        memgraph_results = list(memgraph_results)[0]
+        
+        results = []
+        # get the value for each key in the memgraph_results
+        for key in memgraph_results.keys():
+            results.append(memgraph_results[key])
+
+        return results

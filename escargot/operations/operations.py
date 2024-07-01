@@ -182,10 +182,10 @@ class Generate(Operation):
                     for knowledge_request in base_state["instruction"]["KnowledgeRequests"]:
                         temp_state = copy.deepcopy(base_state)
                         temp_state["instruction"]["KnowledgeRequests"] = [knowledge_request]
-                        prompts.append(prompter.generate_prompt(self.num_branches_prompt, knowledge_list, **temp_state))
+                        prompts.append(prompter.generate_prompt( knowledge_list, **temp_state))
                 
         else:
-            prompts.append(prompter.generate_prompt(self.num_branches_prompt, knowledge_list, **base_state))
+            prompts.append(prompter.generate_prompt( knowledge_list, **base_state))
         for prompt in prompts:
             if prompt is None or prompt == "":
                 self.logger.debug("Prompt for LM is empty")
@@ -194,16 +194,17 @@ class Generate(Operation):
             if "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is not None:
                 responses.append("Function: " + base_state["instruction"]["Function"])
             else:
-                responses.append(lm.get_response_texts(
-                    lm.query(prompt, num_responses=self.num_branches_response)
-                ))
+                for i in range(self.num_branches_response):
+                    responses.append(lm.get_response_texts(
+                        lm.query(prompt, num_responses=1)
+                    ))
         return prompts, responses
     
     def generate_from_multiple_thoughts(
         self, lm: AbstractLanguageModel, prompter: Prompter, base_state: List[Dict], knowledge_list: Dict
     ):
         
-        prompt = prompter.generate_prompt(self.num_branches_prompt, knowledge_list, **base_state)
+        prompt = prompter.generate_prompt(knowledge_list, **base_state)
         if prompt is None or prompt == "":
             self.logger.debug("Prompt for LM is empty")
             return prompt, []
@@ -246,6 +247,8 @@ class Generate(Operation):
             base_state = previous_thoughts[0].state
             if "generate_successors" in base_state:
                 base_state.pop("generate_successors")
+            if "num_branches_response" in base_state:
+                self.num_branches_response = base_state.pop("num_branches_response")
             if len(self.get_thoughts()) > 0 and "StepID" in self.get_thoughts()[0].state:
                 base_state["StepID"] = self.get_thoughts()[0].state["StepID"]
                 for instruction in base_state["instructions"]:
@@ -284,9 +287,18 @@ class Generate(Operation):
         for response in responses:
             new_state = parser.parse_generate_answer(base_state, response)
             if new_state is not None:
-                new_state = {**base_state, **new_state, "prompt": prompts[index]}
+                if len(previous_thoughts) > 1:
+                    new_state = {**base_state, **new_state, "prompt": prompts[index]}
+                else:
+                    new_state = {**base_state, **new_state, "prompt": prompts[0]}
                 if len(self.thoughts) > 0:
-                    self.thoughts[-1].state = new_state
+                    if self.thoughts[-1].state["phase"] == "plan_assessment":
+                        if type(self.thoughts[-1].state["input"]) == str:
+                            self.thoughts[-1].state["input"] = [self.thoughts[-1].state["input"]]
+                        self.thoughts[-1].state["input"].append(new_state["input"])
+                        continue
+                    else:
+                        self.thoughts[-1].state = new_state
                 else:
                     self.thoughts.append(Thought(new_state))
                 self.logger.debug(
@@ -296,9 +308,9 @@ class Generate(Operation):
                 )
                 if "generate_successors" in new_state:
                     predecessor = self
-                    for i in range(new_state["generate_successors"]):
-                        gen_nda = Generate(1, 1)
-                        gen_nda.add_predecessor(predecessor)
+                    gen_nda = Generate(1, new_state["generate_successors"])
+                    gen_nda.add_predecessor(predecessor)
+                        
                 
                 # edges look like ['StepID_1-StepID_2', 'StepID_1-StepID_3', 'StepID_2-StepID_4', 'StepID_3-StepID_4']
                 # it can also look like ['1-2', '1-3', '2-4', '3-4']
@@ -345,7 +357,7 @@ class Generate(Operation):
                                 knowledge_list_array = []
                             #check if the array elements has "" or '' around them. If so add them for each elemen
                             elif new_state["input"].count("'") >= 2 or new_state["input"].count('"') >= 2:
-                                knowledge_list_array = new_state["input"].replace("[", "").replace("]", "").replace("'", "").split(",")
+                                knowledge_list_array = new_state["input"].replace("[", "").replace("]", "").replace("\"","").replace("'", "").split(",")
                             elif new_state["input"].count("'") == 0 and new_state["input"].count('"') == 0:
                                 knowledge_list_array = new_state["input"].replace("[", "").replace("]", "").split(",")
                             else:
