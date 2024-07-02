@@ -175,15 +175,18 @@ class Generate(Operation):
     ):
         prompts = []
         responses = []
+        if len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] == "output":
+            temp_state = copy.deepcopy(base_state)
+            temp_state["phase"] = "output"
+            prompts.append(prompter.generate_prompt( knowledge_list, **temp_state))
         #within a step, if there are knowledge requests needed, and there are multiple, the requests should be made separate
-        if "StepID" in base_state:
-            if "instruction" in base_state:
-                if base_state["instruction"]["KnowledgeRequests"] is not None:
-                    for knowledge_request in base_state["instruction"]["KnowledgeRequests"]:
-                        temp_state = copy.deepcopy(base_state)
-                        temp_state["instruction"]["KnowledgeRequests"] = [knowledge_request]
-                        prompts.append(prompter.generate_prompt( knowledge_list, **temp_state))
-                
+        elif "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["KnowledgeRequests"] is not None:
+            for knowledge_request in base_state["instruction"]["KnowledgeRequests"]:
+                temp_state = copy.deepcopy(base_state)
+                temp_state["instruction"]["KnowledgeRequests"] = [knowledge_request]
+                prompts.append(prompter.generate_prompt( knowledge_list, **temp_state))
+                responses.append(prompts[-1])
+            return prompts, responses
         else:
             prompts.append(prompter.generate_prompt( knowledge_list, **base_state))
         for prompt in prompts:
@@ -191,8 +194,11 @@ class Generate(Operation):
                 self.logger.debug("Prompt for LM is empty")
                 return prompt, []
             self.logger.debug("Prompt for LM: %s", prompt)
-            if "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is not None:
+            
+            if len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] != "output" and "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is not None:
                 responses.append("Function: " + base_state["instruction"]["Function"])
+            elif len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] != "output" and "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is None:
+                responses.append("No Function")
             else:
                 for i in range(self.num_branches_response):
                     responses.append(lm.get_response_texts(
@@ -297,6 +303,8 @@ class Generate(Operation):
                             self.thoughts[-1].state["input"] = [self.thoughts[-1].state["input"]]
                         self.thoughts[-1].state["input"].append(new_state["input"])
                         continue
+                    elif self.thoughts[-1].state["phase"] == "output":
+                        self.thoughts[-1].state["input"] = new_state["input"]
                     else:
                         self.thoughts[-1].state = new_state
                 else:
@@ -375,12 +383,7 @@ class Generate(Operation):
             index += 1
 
         #populate the 
-        if new_state["phase"] == "steps" and new_state is not None and "instruction" in new_state and new_state["instruction"]["Function"] is not None:
-            #parse the function and get the two knowledge lists to intersect
-            # example: INTERSECT(Knowledge_1, Knowledge_2)
-            # example: INTERSECT(Knowledge_3, Knowledge_6, Knowledge_7)
-            # example: Intesect(Knowledge_1, Knowledge_2, Knowledge_3)
-            
+        if self.thoughts[-1].state["phase"] != "output" and new_state["phase"] == "steps" and new_state is not None and "instruction" in new_state and new_state["instruction"]["Function"] is not None:
             #get the two knowledge lists by obtaining the first set of parantheses
             knowledge_ids = new_state["instruction"]["Function"]
             knowledge_ids = knowledge_ids[knowledge_ids.find("(")+1:knowledge_ids.find(")")]
@@ -398,8 +401,8 @@ class Generate(Operation):
                             intersected_list = list(set(intersected_list) & set(knowledge_list[knowledge_id]))
                 # print("intersected_list:", intersected_list)
                 self.logger.info("intersected_list: %s", intersected_list)
-                self.thoughts[-1].state["output"] = intersected_list
-                knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["output"]
+                self.thoughts[-1].state["input"] = intersected_list
+                knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
             elif "union" in new_state["instruction"]["Function"].lower():
                 #union the nonzero amount of elements in the list
                 union_list = []
@@ -411,8 +414,8 @@ class Generate(Operation):
                             union_list = list(set(union_list) | set(knowledge_list[knowledge_id]))
                 # print("union_list:", union_list)
                 self.logger.info("union_list: %s", union_list)  
-                self.thoughts[-1].state["output"] = union_list
-                knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["output"]
+                self.thoughts[-1].state["input"] = union_list
+                knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
             elif "difference" in new_state["instruction"]["Function"].lower():
                 #difference the nonzero amount of elements in the list
                 difference_list = []
@@ -424,12 +427,15 @@ class Generate(Operation):
                             difference_list = list(set(difference_list) - set(knowledge_list[knowledge_id]))
                 # print("difference_list:", difference_list)
                 self.logger.info("difference_list: %s", difference_list)
-                self.thoughts[-1].state["output"] = difference_list
-                knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["output"]
+                self.thoughts[-1].state["input"] = difference_list
+                knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
             else:
                 self.logger.warning("Instruction function not recognized", new_state["instruction"]["Function"])
                 # print("Instruction function not recognized", new_state["instruction"]["Function"])
             
+        if self.thoughts[-1].state["phase"] == "output":
+            self.logger.info("Output: %s", self.thoughts[-1].state["input"])
+            print("Output:", self.thoughts[-1].state["input"])
             
         if (
             len(self.thoughts)
