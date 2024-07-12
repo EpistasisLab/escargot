@@ -9,8 +9,8 @@ import copy
 
 from escargot.operations.thought import Thought
 from escargot.language_models import AbstractLanguageModel
-from escargot.prompter import Prompter
-from escargot.parser import Parser
+from escargot.prompter import ESCARGOTPrompter
+from escargot.parser import ESCARGOTParser
 
 
 
@@ -86,7 +86,7 @@ class Operation(ABC):
         operation.predecessors.append(self)
 
     def execute(
-        self, lm: AbstractLanguageModel, prompter: Prompter, parser: Parser, got_steps: Dict, knowledge_list : Dict, **kwargs
+        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, got_steps: Dict, knowledge_list : Dict, **kwargs
     ) -> None:
         """
         Execute the operation, assuring that all predecessors have been executed.
@@ -94,9 +94,9 @@ class Operation(ABC):
         :param lm: The language model to be used.
         :type lm: AbstractLanguageModel
         :param prompter: The prompter for crafting prompts.
-        :type prompter: Prompter
+        :type prompter: ESCARGOTPrompter
         :param parser: The parser for parsing responses.
-        :type parser: Parser
+        :type parser: ESCARGOTParser
         :param kwargs: Additional parameters for execution.
         :raises AssertionError: If not all predecessors have been executed.
         """
@@ -110,7 +110,7 @@ class Operation(ABC):
 
     @abstractmethod
     def _execute(
-        self, lm: AbstractLanguageModel, prompter: Prompter, parser: Parser, got_steps: Dict, knowledge_list : Dict, **kwargs
+        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, got_steps: Dict, knowledge_list : Dict, **kwargs
     ) -> None:
         """
         Abstract method for the actual execution of the operation.
@@ -119,9 +119,9 @@ class Operation(ABC):
         :param lm: The language model to be used.
         :type lm: AbstractLanguageModel
         :param prompter: The prompter for crafting prompts.
-        :type prompter: Prompter
+        :type prompter: ESCARGOTPrompter
         :param parser: The parser for parsing responses.
-        :type parser: Parser
+        :type parser: ESCARGOTParser
         :param kwargs: Additional parameters for execution.
         """
         pass
@@ -171,7 +171,7 @@ class Generate(Operation):
         return self.thoughts
     
     def generate_from_single_thought(
-        self, lm: AbstractLanguageModel, prompter: Prompter, base_state: Dict, knowledge_list: Dict
+        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, base_state: Dict, knowledge_list: Dict
     ):
         prompts = []
         responses = []
@@ -207,7 +207,7 @@ class Generate(Operation):
         return prompts, responses
     
     def generate_from_multiple_thoughts(
-        self, lm: AbstractLanguageModel, prompter: Prompter, base_state: List[Dict], knowledge_list: Dict
+        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, base_state: List[Dict], knowledge_list: Dict
     ):
         
         prompt = prompter.generate_prompt(knowledge_list, **base_state)
@@ -224,7 +224,7 @@ class Generate(Operation):
         return prompt, responses
 
     def _execute(
-        self, lm: AbstractLanguageModel, prompter: Prompter, parser: Parser, got_steps: Dict, knowledge_list : Dict, **kwargs
+        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, got_steps: Dict, knowledge_list : Dict, **kwargs
     ) -> None:
         """
         Executes the Generate operation by generating thoughts from the predecessors.
@@ -234,9 +234,9 @@ class Generate(Operation):
         :param lm: The language model to be used.
         :type lm: AbstractLanguageModel
         :param prompter: The prompter for crafting prompts.
-        :type prompter: Prompter
+        :type prompter: ESCARGOTPrompter
         :param parser: The parser for parsing responses.
-        :type parser: Parser
+        :type parser: ESCARGOTParser
         :param kwargs: Additional parameters for execution.
         """
         previous_thoughts: List[Thought] = self.get_previous_thoughts()

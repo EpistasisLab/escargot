@@ -14,12 +14,15 @@ class WeaviateClient:
             self.config = config_path
         else:
             self.load_config(config_path)
-        self.config: Dict = self.config["weaviate"]
-        self.url = self.config["url"]
-        self.api_key = self.config["api_key"]
-        self.db = self.config["db"]
-        self.limit = self.config["limit"]
-        self.client = self.get_client()
+        if "weaviate" not in self.config:
+            self.client = None
+        else:
+            self.config: Dict = self.config["weaviate"]
+            self.url = self.config["url"]
+            self.api_key = self.config["api_key"]
+            self.db = self.config["db"]
+            self.limit = self.config["limit"]
+            self.client = self.get_client()
         
     def load_config(self, path: str) -> None:
         """

@@ -13,13 +13,16 @@ class MemgraphClient:
             self.config = config_path
         else:
             self.load_config(config_path)
-        self.config: Dict = self.config["memgraph"]
-        self.host = self.config["host"]
-        self.port = self.config["port"]
-        self.memgraph = Memgraph(host=self.host, port=self.port)
-        self.num_responses = 3
-        self.cache = {}
-        self.schema = None
+        if "memgraph" not in self.config:
+            self.memgraph = None
+        else:
+            self.config: Dict = self.config["memgraph"]
+            self.host = self.config["host"]
+            self.port = self.config["port"]
+            self.memgraph = Memgraph(host=self.host, port=self.port)
+            self.num_responses = 3
+            self.cache = {}
+            self.schema = None
 
         # TODO write a function to save the graph schema in
 

@@ -1,1 +1,1 @@
-from .parser import Parser, ESCARGOTParser
+from .parser import ESCARGOTParser

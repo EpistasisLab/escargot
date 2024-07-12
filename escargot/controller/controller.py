@@ -3,8 +3,8 @@ import logging
 from typing import List
 from escargot.language_models import AbstractLanguageModel
 from escargot.operations import GraphOfOperations, Thought
-from escargot.prompter import Prompter
-from escargot.parser import Parser
+from escargot.prompter import ESCARGOTPrompter
+from escargot.parser import ESCARGOTParser
 
 
 class Controller:
@@ -18,8 +18,8 @@ class Controller:
         self,
         lm: AbstractLanguageModel,
         graph: GraphOfOperations,
-        prompter: Prompter,
-        parser: Parser,
+        prompter: ESCARGOTPrompter,
+        parser: ESCARGOTParser,
         problem_parameters: dict,
     ) -> None:
         """
@@ -30,10 +30,10 @@ class Controller:
         :type lm: AbstractLanguageModel
         :param graph: The Graph of Operations to be executed.
         :type graph: OperationsGraph
-        :param prompter: An instance of the Prompter class, used to generate prompts.
-        :type prompter: Prompter
-        :param parser: An instance of the Parser class, used to parse responses.
-        :type parser: Parser
+        :param prompter: An instance of the ESCARGOTPrompter class, used to generate prompts.
+        :type prompter: ESCARGOTPrompter
+        :param parser: An instance of the ESCARGOTParser class, used to parse responses.
+        :type parser: ESCARGOTParser
         :param problem_parameters: Initial parameters/state of the problem.
         :type problem_parameters: dict
         """

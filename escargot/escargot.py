@@ -20,10 +20,14 @@ import escargot.cypher.memgraph as memgraph
 
 class Escargot:
 
-    def __init__(self, config: str):
-        self.lm = language_models.AzureGPT(config, model_name="azuregpt35-16k")
+    def __init__(self, config: str, model_name: str = "azuregpt35-16k"):
+        self.lm = language_models.AzureGPT(config, model_name=model_name)
         self.vdb = WeaviateClient(config)
+        if self.vdb.client is None:
+            self.vdb = None
         self.memgraph_client = memgraph.MemgraphClient(config)
+        if self.memgraph_client.memgraph is None:
+            self.memgraph_client = None
         self.node_types = ""
         self.relationship_types = ""
         self.question = ""
@@ -46,7 +50,7 @@ class Escargot:
             self.controller = controller.Controller(
                 self.lm, 
                 got, 
-                ESCARGOTPrompter(memgraph_client = self.memgraph_client,lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types),
+                ESCARGOTPrompter(memgraph_client = self.memgraph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types),
                 ESCARGOTParser(),
                 {
                     "question": question,
