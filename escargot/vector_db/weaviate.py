@@ -10,7 +10,10 @@ weaviate_client = None
 class WeaviateClient:
     def __init__(self, config_path):
         self.config: Dict = None
-        self.load_config(config_path)
+        if type(config_path) == dict:
+            self.config = config_path
+        else:
+            self.load_config(config_path)
         self.config: Dict = self.config["weaviate"]
         self.url = self.config["url"]
         self.api_key = self.config["api_key"]

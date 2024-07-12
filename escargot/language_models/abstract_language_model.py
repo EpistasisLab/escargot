@@ -11,7 +11,7 @@ class AbstractLanguageModel(ABC):
     """
 
     def __init__(
-        self, config_path: str = "", model_name: str = "", cache: bool = False
+        self, config_path: Any = "", model_name: str = "", cache: bool = False
     ) -> None:
         """
         Initialize the AbstractLanguageModel instance with configuration, model details, and caching options.
@@ -29,7 +29,10 @@ class AbstractLanguageModel(ABC):
         self.cache = cache
         if self.cache:
             self.respone_cache: Dict[str, List[Any]] = {}
-        self.load_config(config_path)
+        if type(config_path) == dict:
+            self.config = config_path
+        else:
+            self.load_config(config_path)
         self.prompt_tokens: int = 0
         self.completion_tokens: int = 0
         self.cost: float = 0.0

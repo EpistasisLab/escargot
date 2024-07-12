@@ -1,4 +1,5 @@
 from gqlalchemy import Memgraph
+#from langchain_community.graphs import MemgraphGraph
 import os
 from typing import Dict
 import json
@@ -8,13 +9,24 @@ class MemgraphClient:
     def __init__(self, config_path):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.config: Dict = None
-        self.load_config(config_path)
+        if type(config_path) == dict:
+            self.config = config_path
+        else:
+            self.load_config(config_path)
         self.config: Dict = self.config["memgraph"]
         self.host = self.config["host"]
         self.port = self.config["port"]
         self.memgraph = Memgraph(host=self.host, port=self.port)
         self.num_responses = 3
         self.cache = {}
+        self.schema = None
+
+        # TODO write a function to save the graph schema in
+
+    def get_schema(self):
+        self.memgraph.refresh_schema()
+        self.schema = self.memgraph
+        return self.schema
 
     def load_config(self, path: str) -> None:
         """
