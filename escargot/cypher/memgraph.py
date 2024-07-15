@@ -27,9 +27,51 @@ class MemgraphClient:
         # TODO write a function to save the graph schema in
 
     def get_schema(self):
-        self.memgraph.refresh_schema()
-        self.schema = self.memgraph
-        return self.schema
+        SCHEMA_QUERY = """
+        CALL llm_util.schema("raw")
+        YIELD *
+        RETURN *
+        """
+        tries = 3
+        while tries > 0:
+            try:
+                db_structured_schema = list(self.memgraph.execute_and_fetch(SCHEMA_QUERY))
+                assert db_structured_schema is not None
+                structured_schema = db_structured_schema[0]['schema']
+                break
+            except Exception as e:
+                tries -= 1
+                self.logger.error(f"Error in memgraph: {e}, trying again {tries}")
+        
+        # print(structured_schema)
+        # Format node properties
+        formatted_node_props = []
+        node_names = []
+
+        for node_name, properties in structured_schema["node_props"].items():
+            # print(node_name, properties)
+            node_names.append(node_name)
+            formatted_node_props.append(
+                f"Node name: '{node_name}', Node properties: {properties}"
+            )
+
+        formatted_rels = []
+        relationship_names = []
+        for rel in structured_schema["relationships"]:
+            relationship_names.append(rel['type'])
+            formatted_rels.append(
+                f"(:{rel['start']})-[:{rel['type']}]->(:{rel['end']})"
+            )
+
+        self.schema = "\n".join(
+            [
+                "Node properties are the following:",
+                *formatted_node_props,
+                "The relationships are the following:",
+                *formatted_rels,
+            ]
+        )
+        return (", ").join(node_names), ("\n").join(relationship_names)
 
     def load_config(self, path: str) -> None:
         """
@@ -46,7 +88,7 @@ class MemgraphClient:
         with open(path, "r") as f:
             self.config = json.load(f)
 
-    def execute(self, lm, query):
+    def execute(self, lm, query, debug_level=0):
         if query in self.cache:
             results = self.cache[query]
         else:
@@ -76,7 +118,8 @@ class MemgraphClient:
                         #remove \n from the response
                         response = response.replace("\n", "")
                         
-                        print("Memgraph request:",response)
+                        if debug_level > 1:
+                            print("Memgraph request:",response)
 
                         memgraph_results = self.memgraph.execute_and_fetch(response)
                         memgraph_results = list(memgraph_results)
@@ -84,9 +127,8 @@ class MemgraphClient:
                         next_try = min(num_responses, next_try)
                     except Exception as e:
                         next_try = (next_try + 1) // 2
-                        self.logger.warning(
-                            f"Error in memgraph: {e}, trying again {next_try}"
-                        )
+                        if debug_level > 0:
+                            print(f"Error in memgraph: {e}, trying again {next_try}")
                         total_num_attempts -= 1
 
             results = []

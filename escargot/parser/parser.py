@@ -32,9 +32,13 @@ class ESCARGOTParser:
         :return: The new thought states after parsing the respones from the language model.
         :rtype: List[Dict]
         """
+
         if type(texts) == str:
             texts = [texts]
         for text in texts:
+            if "debug_level" in state:
+                if state["debug_level"] > 1:
+                    print(f"Got response: {text}")
             if state["method"] == "got":
                 try:
                     if state["phase"] == "planning":
@@ -68,6 +72,9 @@ class ESCARGOTParser:
                         instructions, edges = parse_xml(text)
                         new_state["instructions"] = instructions
                         new_state["edges"] = edges
+                        if state["debug_level"] > 0:
+                            print("instructions:", instructions)
+                            print("edges:", edges)
                     elif state["phase"] == "xml_cleanup":
                         new_state = state.copy()
                         new_state["input"] = text

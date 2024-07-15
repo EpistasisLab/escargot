@@ -46,6 +46,7 @@ class Controller:
         self.run_executed = False
         self.got_steps = {}
         self.knowledge_list = {}
+        self.final_thought = None
 
     def run(self) -> None:
         """
@@ -78,6 +79,7 @@ class Controller:
                 if operation.can_be_executed():
                     execution_queue.append(operation)
             self.logger.info("Operations left to be executed %s", execution_queue)
+        self.final_thought = current_operation.get_thoughts()[0]
         self.logger.info("All operations executed")
         self.run_executed = True
 

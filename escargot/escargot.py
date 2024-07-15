@@ -20,21 +20,33 @@ import escargot.cypher.memgraph as memgraph
 
 class Escargot:
 
-    def __init__(self, config: str, model_name: str = "azuregpt35-16k"):
+    def __init__(self, config: str, node_types:str = "", relationship_types:str = "", model_name: str = "azuregpt35-16k"):
         self.lm = language_models.AzureGPT(config, model_name=model_name)
         self.vdb = WeaviateClient(config)
-        if self.vdb.client is None:
-            self.vdb = None
-        self.memgraph_client = memgraph.MemgraphClient(config)
-        if self.memgraph_client.memgraph is None:
-            self.memgraph_client = None
         self.node_types = ""
         self.relationship_types = ""
         self.question = ""
         self.controller = None
         self.operations_graph = None
+        if self.vdb.client is None:
+            self.vdb = None
+        self.memgraph_client = memgraph.MemgraphClient(config)
+        if self.memgraph_client.memgraph is None:
+            self.memgraph_client = None
+        else:
+            if node_types == "" or relationship_types == "":
+                self.node_types, self.relationship_types = self.memgraph_client.get_schema()
+            else:
+                self.node_types = node_types
+                self.relationship_types = relationship_types
     
-    def ask(self,question,num_strategies=3):
+    #debug_level: 0, 1, 2, 3
+    #0: no debug, only output
+    #1: output, instructions, and exceptions
+    #2: output, instructions, exceptions, and debug info
+    #3: output, instructions, exceptions, debug info, and LLM output
+    def ask(self,question,num_strategies=3,debug_level = 0):
+        
 
         def got() -> operations.GraphOfOperations:
             operations_graph = operations.GraphOfOperations()
@@ -58,17 +70,24 @@ class Escargot:
                     "phase": "planning",
                     "method" : "got",
                     "num_branches_response": num_strategies,
+                    "debug_level": debug_level,
                 }
             )
             self.controller.run()
         except Exception as e:
-            print("exception:",e)
+            if debug_level > 0:
+                print("exception:",e)
 
         self.controller.logger.handlers = []
         self.controller.logger = None
 
         self.operations_graph = self.controller.graph.operations
+        output = ""
+        if self.controller.final_thought is not None:
+            output = self.controller.final_thought.state['input']
         del self.controller
+        return output
+        
 
 
 

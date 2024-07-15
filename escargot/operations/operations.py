@@ -97,8 +97,11 @@ class Operation(ABC):
         :type prompter: ESCARGOTPrompter
         :param parser: The parser for parsing responses.
         :type parser: ESCARGOTParser
+        :param got_steps: The dictionary of steps in the Graph of Operations.
+        :type got_steps: Dict
+        :param knowledge_list: The dictionary of knowledge lists.
+        :type knowledge_list: Dict
         :param kwargs: Additional parameters for execution.
-        :raises AssertionError: If not all predecessors have been executed.
         """
         assert self.can_be_executed(), "Not all predecessors have been executed"
         self.logger.info(
@@ -214,7 +217,8 @@ class Generate(Operation):
         if prompt is None or prompt == "":
             self.logger.debug("Prompt for LM is empty")
             return prompt, []
-        self.logger.debug("Prompt for LM: %s", prompt)
+        if base_state["debug_level"] > 2:
+            self.logger.debug("Prompt for LM: %s", prompt)
         if "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is not None:
             responses = ["Function: " + base_state["instruction"]["Function"]]
         else:
@@ -237,6 +241,10 @@ class Generate(Operation):
         :type prompter: ESCARGOTPrompter
         :param parser: The parser for parsing responses.
         :type parser: ESCARGOTParser
+        :param got_steps: The dictionary of steps in the Graph of Operations.
+        :type got_steps: Dict
+        :param knowledge_list: The dictionary of knowledge lists.
+        :type knowledge_list: Dict
         :param kwargs: Additional parameters for execution.
         """
         previous_thoughts: List[Thought] = self.get_previous_thoughts()
@@ -283,7 +291,6 @@ class Generate(Operation):
                     if instruction["StepID"] == base_state["StepID"] or instruction["StepID"] == int(base_state["StepID"]) or instruction["StepID"] == str("StepID_" + base_state["StepID"]):
                         base_state["instruction"] = instruction
                         break
-            
             prompts, responses = self.generate_from_multiple_thoughts(
                 lm, prompter, base_state, knowledge_list
             )
@@ -399,8 +406,8 @@ class Generate(Operation):
                             intersected_list = knowledge_list[knowledge_id]
                         else:
                             intersected_list = list(set(intersected_list) & set(knowledge_list[knowledge_id]))
-                # print("intersected_list:", intersected_list)
-                self.logger.info("intersected_list: %s", intersected_list)
+                if self.thoughts[-1].state["debug_level"] > 2:
+                    print("Intersection Function performed on:", str(knowledge_ids), "resulting in:", intersected_list)
                 self.thoughts[-1].state["input"] = intersected_list
                 knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
             elif "union" in new_state["instruction"]["Function"].lower():
@@ -412,8 +419,8 @@ class Generate(Operation):
                             union_list = knowledge_list[knowledge_id]
                         else:
                             union_list = list(set(union_list) | set(knowledge_list[knowledge_id]))
-                # print("union_list:", union_list)
-                self.logger.info("union_list: %s", union_list)  
+                if self.thoughts[-1].state["debug_level"] > 2:
+                    print("Union Function performed on:", str(knowledge_ids), "resulting in:", union_list)
                 self.thoughts[-1].state["input"] = union_list
                 knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
             elif "difference" in new_state["instruction"]["Function"].lower():
@@ -425,8 +432,8 @@ class Generate(Operation):
                             difference_list = knowledge_list[knowledge_id]
                         else:
                             difference_list = list(set(difference_list) - set(knowledge_list[knowledge_id]))
-                # print("difference_list:", difference_list)
-                self.logger.info("difference_list: %s", difference_list)
+                if self.thoughts[-1].state["debug_level"] > 2:
+                    print("Difference Function performed on:", str(knowledge_ids), "resulting in:", difference_list)
                 self.thoughts[-1].state["input"] = difference_list
                 knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
             else:

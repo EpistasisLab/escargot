@@ -69,7 +69,7 @@ Only return the XML.
 The knowledge graph contains node types: {node_types}.
 The knowledge graph contains relationships: {relationship_types}.
 
-Format your response in XML format, where the steps will be within <Instructions> tags. Each step will be within <Step> tags and will have an incremental <StepID> value within it. The full description of the step will be put in the <Instruction> tags within the <Step>. Following the <Instruction>, there should only be one type of instruction within a <Step>: <KnowledgeRequest> or <Function>
+Format your response in XML format, where the steps will be within <Instructions> tags. Each step will be within <Step> tags and will have an incremental <StepID> value within it. The full description of the step will be put in the <Instruction> tags within the <Step>. Following the <Instruction>, there should only be one type of instruction within a <Step>: <KnowledgeRequest> or <Function>. Every step should have filled at least one of these instructions.
 
 <KnowledgeRequest>:
  If a request to the knowledge graph needs to be made within a step, you must include the knowledge requests as simple single node to Relationship to node format. Each <KnowledgeRequest> should have an identifier in <KnowledgeID> tags such as Knowledge_1 and Knowledge_2.  Any knowledge request should have the format of <Knowledge> tag where it labeled with: Node Name-Relationship-Node Name. There must be at least one specific node that is requested such as a specific gene or disease. If there are any specific nodes and not a node type, put a ! before and after the word. For instance, Alzheimer's is a specific Disease node, so it should be labeled "!Alzheimer's Disease!". Another example are of gene symbols, which are specific genes, so they should be labeled "!APOE!". 
@@ -239,7 +239,7 @@ With the above knowledge, follow this step:
 {instruction}
 and answer this question: {question}"""
 
-    memgraph_prompt = """You are an expert memgraph Cypher translator who understands the question in english and convert to Cypher strictly based on the Neo4j Schema provided and following the instructions below:
+    memgraph_prompt_1= """You are an expert memgraph Cypher translator who understands the question in english and convert to Cypher strictly based on the Neo4j Schema provided and following the instructions below:
 1. Generate Cypher query compatible ONLY for memgraph 2.17.0
 2. Do not use EXISTS, SIZE, CONTAINS ANY keywords in the cypher. Use alias when using the WITH keyword
 3. Please do not use same variable names for different nodes and relationships in the query.
@@ -258,8 +258,9 @@ and answer this question: {question}"""
 16. The request may not clear and you do your best to assume the proper relationship to use based on the question.
 
 Schema:
-{schema}
+"""
 
+    memgraph_prompt_2 = """
 Samples:
 Question: Provide the cypher for !METTL5!
 Answer: MATCH (g:Gene {geneSymbol: "METTL5"}) RETURN g.geneSymbol
@@ -270,7 +271,7 @@ Answer: MATCH (d:Drug)-[:DRUGTREATSDISEASE]->(:Disease {commonName: "Alzheimer\'
 Question: Provide the Cypher for Gene IN PATHWAY-!STYXL2!
 Answer: MATCH (g:Gene {geneSymbol: "STYXL2"})-[:GENEINPATHWAY]->(p:Pathway) RETURN p.commonName
 
-Provide the Cypher query for the following question """
+"""
 
     output_prompt = """Question:
 {question}
@@ -285,30 +286,6 @@ Format the answer."""
         self.node_types = node_types
         self.relationship_types = relationship_types
         pass
-
-    def extract_details(self, question_type: str, question: str ) -> None:
-        if question_type == "true/false":
-            additional_instruction = "You will be asked to answer the question with only a TRUE or FALSE response."
-            # check if "True or False Question: " is in the question
-            if "True or False Question: " in question:
-                statement_to_embed = question[question.index("True or False Question: ") + len("True or False Question: "):]
-            else:
-                statement_to_embed = question
-                question = "True or False Question: " + question
-        elif question_type == "multiple choice":
-            additional_instruction = "You will be asked to answer the question with only the multiple choice number response. For instance, if the correct answer is '2', you will need to answer '2'. If you are not sure, answer NA."
-            # check if "? 1." is in the question and separate the question from the choice
-            if "? 1." in question:
-                statement_to_embed = question[:question.index("? 1.")]
-            else:
-                statement_to_embed = question
-        elif question_type == "list":
-            additional_instruction = "You will be asked to answer the question with only the list with each element separated by a newline."
-            statement_to_embed = question
-        else:
-            additional_instruction = ""
-            statement_to_embed = question
-        return statement_to_embed, additional_instruction, question
      
     def generate_prompt(
         self,
@@ -337,7 +314,6 @@ Format the answer."""
         :raise AssertionError: If method is not implemented yet.
         """
         assert question is not None, "Question should not be None."
-        # statement_to_embed, additional_instruction, question = self.extract_details(question_type, question)
         if method == "got":
             if (input is None or input == "") and kwargs["phase"] == "planning":
                 return self.planning_prompt.format(question=question, node_types=self.node_types, relationship_types=self.relationship_types)
@@ -355,7 +331,8 @@ Format the answer."""
                     return None
                 else:
                     current_instruction = kwargs["instruction"]
-                    print("current_instruction:", current_instruction)
+                    if kwargs['debug_level'] > 1:
+                        print("current_instruction:", current_instruction)
                     if current_instruction['InstructionType'] == "KnowledgeRequest":
                         knowledge_requests = current_instruction["KnowledgeRequests"]
                         for knowledge_request in knowledge_requests:
@@ -364,7 +341,7 @@ Format the answer."""
                             for i in range(statement_to_embed.count("Knowledge_")):
                                 #get the number that follows "Knowledge_" and fill it in from the knowledge_list
                                 knowledge_number = re.search(r'Knowledge_(\d+)', statement_to_embed).group(1)
-                                statement_to_embed = statement_to_embed.replace(f"Knowledge_{knowledge_number}", "!" + str(knowledge_list[f"Knowledge_{knowledge_number}"]) + "!")
+                                statement_to_embed = statement_to_embed.replace(f"Knowledge_{knowledge_number}", "!" + str((",").join(knowledge_list[f"Knowledge_{knowledge_number}"])) + "!")
                             
                             if self.vector_db is not None:
                                 if statement_to_embed.count("!") >= 2:
@@ -388,7 +365,7 @@ Format the answer."""
                                     knowledge = "\n".join(knowledge_array)
                             # If it's a cypher query, then execute the query and return the results directly
                             elif self.memgraph_client is not None:
-                                knowledge_array = self.memgraph_client.execute(self.lm, str(self.memgraph_prompt) + str(current_instruction["Instruction"]) + ". Return only the Cypher query:" + str(statement_to_embed))
+                                knowledge_array = self.memgraph_client.execute(self.lm, str(self.memgraph_prompt_1) +self.memgraph_client.schema + str(self.memgraph_prompt_2) + "Return only the Cypher query: " + str(statement_to_embed))
                                 knowledge = ",".join(knowledge_array)
                                 return knowledge
                             if knowledge == "":
