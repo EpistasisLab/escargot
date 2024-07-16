@@ -38,27 +38,20 @@ Here is ApproachNumber 3:
 "{approach_3}"
 
 If knowledge needs to be pulled from the knowledge graph, they will try to provide what specific relationships or node information is necessary.
-The score should reflect on how clear clear, succinct, and efficient in the number of steps by avoiding redundant knowledge extractions. The highest score approach would be specific on what knowledge to extract, especially if it includes specific nodes. For instance, an approach with step 'Find the body parts or anatomy that over-express METTL5. (BODYPART OVEREXPRESSES GENE)' scores very high since it is specific on the node METTL5 and performs a 1 hop knowledge request.
-An approach where there are steps that contain a specific node with a relationship scores higher than an approach where there any steps that contain only arbitrary node types.
+The score should reflect on how clear and efficient each step is. It is not about how many steps are taken, but the quality of the steps. The highest score approach would be specific on what knowledge to extract, especially if it includes specific nodes. For instance, an approach with step 'Find the body parts or anatomy that over-express METTL5. (BODYPART OVEREXPRESSES GENE)' scores very high since it is specific on the node METTL5 and performs a 1 hop knowledge request.
+An approach where there are steps that contain a specific node with a relationship scores higher than an approach where there any steps that contain only arbitrary node types such as when a step that is a generic node type like 'Determine the relationship between genes and body parts that represents over-expression'
 
 The knowledge graph contains node types: {node_types}.
 The knowledge graph contains relationships: {relationship_types}.
 
-Return a XML formatted list with all the approaches in Approach tags. Each approach should be within <Approach> tags and will have an incremental <ApproachID> value within it. The score should be within <Score> tags.
+Return a XML formatted list with all the approaches in Approach tags. Each approach should be within <Approach> tags and will have an incremental <ApproachID> value within it. The score should be an integer between 1-10 within <Score> tags.
 An example is as follows:
 <Approaches>
   <Approach>
     <ApproachID>1</ApproachID>
-    <Score>6</Score>
+    <Score>...</Score>
   </Approach>
-  <Approach>
-    <ApproachID>2</ApproachID>
-    <Score>7</Score>
-  </Approach>
-  <Approach>
-    <ApproachID>3</ApproachID>
-    <Score>9</Score>
-  </Approach>
+  ...
 </Approaches>
 
 Only return the XML.
@@ -255,7 +248,9 @@ and answer this question: {question}"""
 13. If there is a word surrounded by !, it means it is a specific node and not a node type. For instance, if the word is !Alzheimer's Disease!, it means it is a specific Disease node and not a Disease node type.
 14. If a node is a Gene, please make sure you use the geneSymbol property, not the commonName.
 15. For the return, return only one property, either the commonName or the geneSymbol property. Do not return both properties.
-16. The request may not clear and you do your best to assume the proper relationship to use based on the question.
+16. The request may not clear and you do your best to assume the proper relationship to use based on the original question.
+
+Original question: {question}
 
 Schema:
 """
@@ -365,7 +360,7 @@ Format the answer."""
                                     knowledge = "\n".join(knowledge_array)
                             # If it's a cypher query, then execute the query and return the results directly
                             elif self.memgraph_client is not None:
-                                knowledge_array = self.memgraph_client.execute(self.lm, str(self.memgraph_prompt_1) +self.memgraph_client.schema + str(self.memgraph_prompt_2) + "Return only the Cypher query: " + str(statement_to_embed))
+                                knowledge_array = self.memgraph_client.execute(self.lm, str(self.memgraph_prompt_1.format(question=question)) +self.memgraph_client.schema + str(self.memgraph_prompt_2) + "Return only the Cypher query for: " + str(statement_to_embed),str(statement_to_embed),debug_level=kwargs['debug_level'])
                                 knowledge = ",".join(knowledge_array)
                                 return knowledge
                             if knowledge == "":

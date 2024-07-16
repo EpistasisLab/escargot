@@ -24,8 +24,6 @@ class MemgraphClient:
             self.cache = {}
             self.schema = None
 
-        # TODO write a function to save the graph schema in
-
     def get_schema(self):
         SCHEMA_QUERY = """
         CALL llm_util.schema("raw")
@@ -43,13 +41,10 @@ class MemgraphClient:
                 tries -= 1
                 self.logger.error(f"Error in memgraph: {e}, trying again {tries}")
         
-        # print(structured_schema)
-        # Format node properties
         formatted_node_props = []
         node_names = []
 
         for node_name, properties in structured_schema["node_props"].items():
-            # print(node_name, properties)
             node_names.append(node_name)
             formatted_node_props.append(
                 f"Node name: '{node_name}', Node properties: {properties}"
@@ -88,54 +83,59 @@ class MemgraphClient:
         with open(path, "r") as f:
             self.config = json.load(f)
 
-    def execute(self, lm, query, debug_level=0):
-        if query in self.cache:
-            results = self.cache[query]
+    def execute(self, lm, query, statement, debug_level=0):
+        if statement in self.cache:
+            results = self.cache[statement]
         else:
             num_responses = self.num_responses
+            response = ''
             if num_responses == 1:
                 response = self.chat([{"role": "system", "content": query}], num_responses)
             else:
                 next_try = num_responses
                 total_num_attempts = num_responses
-                while num_responses > 0 and total_num_attempts > 0:
-                    try:
-                        assert next_try > 0
-                        response = lm.get_response_texts(
-                                lm.query(query, num_responses=1)
-                            )
-                        response = response[0]
-                        # Remove "Answer:" from the response
-                        if response.startswith("Answer:"):
-                            response= response[8:].strip()
-                        
-                        #remove ```cypher from the response
-                        response = response.replace("```cypher", "")
+                memgraph_results = []
+                iter = 0
+                while memgraph_results == [] and iter < 3:
+                    iter += 1
+                    while num_responses > 0 and total_num_attempts > 0:
+                        try:
+                            assert next_try > 0
+                            response = lm.get_response_texts(
+                                    lm.query(query, num_responses=1)
+                                )
+                            response = response[0]
+                            # Remove "Answer:" from the response
+                            if response.startswith("Answer:"):
+                                response= response[8:].strip()
+                            
+                            #remove ```cypher from the response
+                            response = response.replace("```cypher", "")
 
-                        #remove ``` from anywhere in the response
-                        response = response.replace("```", "")
+                            #remove ``` from anywhere in the response
+                            response = response.replace("```", "")
 
-                        #remove \n from the response
-                        response = response.replace("\n", "")
-                        
-                        if debug_level > 1:
-                            print("Memgraph request:",response)
+                            #remove \n from the response
+                            response = response.replace("\n", "")
+                            
+                            if debug_level > 1:
+                                print("Memgraph request:",response)
 
-                        memgraph_results = self.memgraph.execute_and_fetch(response)
-                        memgraph_results = list(memgraph_results)
-                        num_responses -= next_try
-                        next_try = min(num_responses, next_try)
-                    except Exception as e:
-                        next_try = (next_try + 1) // 2
-                        if debug_level > 0:
-                            print(f"Error in memgraph: {e}, trying again {next_try}")
-                        total_num_attempts -= 1
+                            memgraph_results = self.memgraph.execute_and_fetch(response)
+                            memgraph_results = list(memgraph_results)
+                            num_responses -= next_try
+                            next_try = min(num_responses, next_try)
+                        except Exception as e:
+                            next_try = (next_try + 1) // 2
+                            if debug_level > 0:
+                                print(f"Error in memgraph: {e}, trying again {next_try}")
+                            total_num_attempts -= 1
 
             results = []
             # get the value in the dictionary x in memgraph_results
             for value in memgraph_results:
                 for key, val in value.items():
                     results.append(val)
-            self.cache[query] = results
+            self.cache[statement] = [response,results]
 
         return results
