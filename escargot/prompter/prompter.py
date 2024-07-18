@@ -18,6 +18,21 @@ The knowledge graph contains relationships: {relationship_types}.
 
 Only show the steps you will take and a small description for each step. If you can determine the knowledge graph relationship that can provide insight in the step, provide the relationship in it and if possible the specific node name, not the node type. If a question require a specific relationship between two specific nodes, provide the specific nodes in the relationship.
 
+Examples:
+Question: List the genes which bind to the drug Cyclothiazide
+Step 1: Find the genes that bind to the drug Cyclothiazide. (CHEMICALBINDSGENE)
+Step 2: List the genes that were found.
+
+Question: List the genes which are commonly under-expressed in spinal cord and thyroid gland
+Step 1: Identify Genes Under-Expressed in Spinal Cord
+Relationship: BODYPARTUNDEREXPRESSESGENE
+Node: Spinal Cord
+Step 2: Identify Genes Under-Expressed in Thyroid Gland
+Relationship: BODYPARTUNDEREXPRESSESGENE
+Node: Thyroid Gland
+Step 3: Find Common Genes
+Action: Compare the lists of genes from steps 1 and 2 to identify common genes under-expressed in both the spinal cord and thyroid gland.
+
 Here is your question:
 {question}
 
