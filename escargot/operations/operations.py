@@ -353,13 +353,18 @@ class Generate(Operation):
                     for step in got_steps:
                         if len(got_steps[step].predecessors) == 0:
                             got_steps[step].add_predecessor(self)
-                    #get the last step in the got_steps and add a successor to it
-                    last_step = list(got_steps.keys())[-1]
-                    got_steps[last_step].add_successor(Generate(1, 1))
-                    got_steps[last_step].successors[-1].thoughts = [Thought(
+                    
+                    #get the last integer key in the got_steps
+                    got_steps_keys = list(got_steps.keys())
+                    got_steps_keys = [int(elem) for elem in got_steps_keys]
+                    got_steps_keys.sort()
+                    got_steps_keys = [str(elem) for elem in got_steps_keys]
+                    last_step = got_steps_keys[-1]
+                    got_steps[str(last_step)].add_successor(Generate(1, 1))
+                    got_steps[str(last_step)].successors[-1].thoughts = [Thought(
                         state={**self.thoughts[-1].state, "phase": "output"}
                     )]
-                    got_steps[last_step].successors[-1].thoughts[-1].state["input"] = ""
+                    got_steps[str(last_step)].successors[-1].thoughts[-1].state["input"] = ""
                     self.logger.info("GoT Steps From XML: %s", got_steps)
                     
                 #populate knowledge_list with condensed knowledge
