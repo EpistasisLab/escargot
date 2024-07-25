@@ -54,6 +54,7 @@ class AzureGPT(AbstractLanguageModel):
         self.api_key: str = os.getenv("OPENAI_API_KEY", self.config["api_key"])
         if self.api_key == "":
             raise ValueError("OPENAI_API_KEY is not set")
+        self.response_cache: Dict[str, List[ChatCompletion]] = {}
         # Initialize the OpenAI Client
         self.client = AzureOpenAI(api_key=self.api_key,azure_endpoint=self.api_base,api_version=self.api_version)
 
@@ -70,8 +71,8 @@ class AzureGPT(AbstractLanguageModel):
         :return: Response(s) from the OpenAI model.
         :rtype: Dict
         """
-        if self.cache and query in self.respone_cache:
-            return self.respone_cache[query]
+        if self.cache and query in self.response_cache:
+            return self.response_cache[query]
 
         if num_responses == 1:
             response = self.chat([{"role": "system", "content": query}], num_responses)
@@ -95,7 +96,7 @@ class AzureGPT(AbstractLanguageModel):
                     total_num_attempts -= 1
 
         if self.cache:
-            self.respone_cache[query] = response
+            self.response_cache[query] = response
         return response
 
     @backoff.on_exception(backoff.expo, OpenAIError, max_time=10, max_tries=6)

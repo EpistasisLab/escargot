@@ -68,13 +68,14 @@ class ESCARGOTParser:
                         new_state = state.copy()
                         new_state["input"] = text
                         # new_state["phase"] = "xml_cleanup"
+                        # new_state["generate_successors"] = 1
                         new_state["phase"] = "steps"
                         instructions, edges = parse_xml(text)
                         new_state["instructions"] = instructions
                         new_state["edges"] = edges
                         if state["debug_level"] > 0:
-                            print("instructions:", instructions)
-                            print("edges:", edges)
+                            print("original instructions:", instructions)
+                            print("original edges:", edges)
                     elif state["phase"] == "xml_cleanup":
                         new_state = state.copy()
                         new_state["input"] = text
@@ -82,8 +83,9 @@ class ESCARGOTParser:
                         instructions, edges = parse_xml(text)
                         new_state["instructions"] = instructions
                         new_state["edges"] = edges
-                        print("instructions:", instructions)
-                        print("edges:", edges)
+                        if state["debug_level"] > 0:
+                            print("instructions:", instructions)
+                            print("edges:", edges)
                     elif state["phase"] == "steps":
                         new_state = state.copy()
                         new_state["input"] = text

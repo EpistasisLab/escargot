@@ -89,15 +89,15 @@ def parse_xml(xml_data):
         # Initialize empty lists to store information
         knowledge_requests = []
         for_info = None
-        function = None
+        function = []
 
         # Check for KnowledgeRequest elements (can be multiple)
         for knowledge_request in step.findall('KnowledgeRequest'):
             knowledge_id = knowledge_request.find('KnowledgeID').text if knowledge_request.find('KnowledgeID') is not None else None
-            node = knowledge_request.find('Node').text if knowledge_request.find('Node') is not None else None
+            node = knowledge_request.find('Query').text if knowledge_request.find('Query') is not None else None
             knowledge_requests.append({
                 "KnowledgeID": knowledge_id,
-                "Node": node
+                "Query": node
             })
 
         # Check for For element
@@ -110,8 +110,12 @@ def parse_xml(xml_data):
             }
 
         # Check for Function element
-        if step.find('Function') is not None:
-            function = step.find('Function').text.strip()
+        # if step.find('Function') is not None:
+        #     function = step.find('Function').text.strip()
+
+        for function_element in step.findall('Function'):
+            function.append(function_element.text.strip())
+
 
         # Return a list with relevant information (adjust as needed)
         return {
@@ -120,7 +124,7 @@ def parse_xml(xml_data):
             "Instruction": instruction.text.strip() if instruction.text else "",
             "KnowledgeRequests": knowledge_requests if knowledge_requests else None,
             # "For": for_info,
-            "Function": function
+            "Function": function if function else None
         }
 
     # print('xml_data:',xml_data.split("\n"))
@@ -133,6 +137,9 @@ def parse_xml(xml_data):
         steps.append(parsed_step)
 
     # Extract and print edges
+    #check if EdgeList exists
+    if root.find('EdgeList') is None:
+        return steps, []
     edges = root.find('EdgeList').findall('Edge')
     #remove \n from the text and whitespace
     edges = [edge.text.replace("\n","").strip() for edge in edges]

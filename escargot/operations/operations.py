@@ -5,7 +5,7 @@ from typing import List, Iterator, Dict, Callable, Union
 from abc import ABC, abstractmethod
 import itertools
 import copy
-
+import re
 
 from escargot.operations.thought import Thought
 from escargot.language_models import AbstractLanguageModel
@@ -182,6 +182,8 @@ class Generate(Operation):
             temp_state = copy.deepcopy(base_state)
             temp_state["phase"] = "output"
             prompts.append(prompter.generate_prompt( knowledge_list, **temp_state))
+            if temp_state['debug_level'] >= 1:
+                print("Prompt for LM:", prompts[-1])
         #within a step, if there are knowledge requests needed, and there are multiple, the requests should be made separate
         elif "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["KnowledgeRequests"] is not None:
             for knowledge_request in base_state["instruction"]["KnowledgeRequests"]:
@@ -199,14 +201,23 @@ class Generate(Operation):
             self.logger.debug("Prompt for LM: %s", prompt)
             
             if len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] != "output" and "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is not None:
-                responses.append("Function: " + base_state["instruction"]["Function"])
+                responses.append("Function: " + str(base_state["instruction"]["Function"]))
             elif len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] != "output" and "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is None:
                 responses.append("No Function")
             else:
                 for i in range(self.num_branches_response):
-                    responses.append(lm.get_response_texts(
-                        lm.query(prompt, num_responses=1)
-                    ))
+                    tries = 0
+                    while tries < 3:
+                        try:
+                            responses.append(lm.get_response_texts(
+                                lm.query(prompt, num_responses=1)
+                            ))
+                            break
+                        except:
+                            tries += 1
+                    
+                
+                
         return prompts, responses
     
     def generate_from_multiple_thoughts(
@@ -220,7 +231,7 @@ class Generate(Operation):
         if base_state["debug_level"] > 2:
             self.logger.debug("Prompt for LM: %s", prompt)
         if "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is not None:
-            responses = ["Function: " + base_state["instruction"]["Function"]]
+            responses = ["Function: " + str(base_state["instruction"]["Function"])]
         else:
             responses = lm.get_response_texts(
                 lm.query(prompt, num_responses=self.num_branches_response)
@@ -291,7 +302,7 @@ class Generate(Operation):
                     if instruction["StepID"] == base_state["StepID"] or instruction["StepID"] == int(base_state["StepID"]) or instruction["StepID"] == str("StepID_" + base_state["StepID"]):
                         base_state["instruction"] = instruction
                         break
-            prompts, responses = self.generate_from_multiple_thoughts(
+            prompts, responses = self.generate_from_single_thought(
                 lm, prompter, base_state, knowledge_list
             )
             self.logger.debug("Responses from LM: %s", responses)
@@ -312,6 +323,7 @@ class Generate(Operation):
                         continue
                     elif self.thoughts[-1].state["phase"] == "output":
                         self.thoughts[-1].state["input"] = new_state["input"]
+                        self.thoughts[-1].state["prompt"] = new_state["prompt"]
                     else:
                         self.thoughts[-1].state = new_state
                 else:
@@ -331,25 +343,32 @@ class Generate(Operation):
                 # it can also look like ['1-2', '1-3', '2-4', '3-4']
             
                 if "edges" in new_state and "StepID" not in new_state:
-                    # self.logger.info("Edges: %s", new_state["edges"])
-                    for edge in new_state["edges"]:
-                        edge = edge.split('-')
-                        #remove "StepID" from each element in edge
-                        edge = [elem.replace("StepID_", "") for elem in edge]
-                        edge = [elem.replace("StepID", "") for elem in edge]
+                    #only one edge
+                    if new_state["edges"] == []:
+                        got_steps['1'] = Generate(1, 1)
+                        got_steps['1'].thoughts = [Thought(
+                            state={**self.thoughts[-1].state, "StepID": '1'}
+                        )]
+                    else:
+                        # self.logger.info("Edges: %s", new_state["edges"])
+                        for edge in new_state["edges"]:
+                            edge = edge.split('-')
+                            #remove "StepID" from each element in edge
+                            edge = [elem.replace("StepID_", "") for elem in edge]
+                            edge = [elem.replace("StepID", "") for elem in edge]
 
-                        if edge[0] not in got_steps:
-                            got_steps[edge[0]] = Generate(1, 1)
-                            got_steps[edge[0]].thoughts = [Thought(
-                                state={**self.thoughts[-1].state, "StepID": edge[0]}
-                            )]
-                        if edge[1] not in got_steps:
-                            got_steps[edge[1]] = Generate(1, 1)
-                            got_steps[edge[1]].thoughts = [Thought(
-                                state={**self.thoughts[-1].state, "StepID": edge[1]}
-                            )]
-                        got_steps[edge[0]].add_successor(got_steps[edge[1]])
-                    #check for all steps in got_steps for predecessors. If no predecessors, assign the self as predecessor
+                            if edge[0] not in got_steps:
+                                got_steps[edge[0]] = Generate(1, 1)
+                                got_steps[edge[0]].thoughts = [Thought(
+                                    state={**self.thoughts[-1].state, "StepID": edge[0]}
+                                )]
+                            if edge[1] not in got_steps:
+                                got_steps[edge[1]] = Generate(1, 1)
+                                got_steps[edge[1]].thoughts = [Thought(
+                                    state={**self.thoughts[-1].state, "StepID": edge[1]}
+                                )]
+                            got_steps[edge[0]].add_successor(got_steps[edge[1]])
+                        #check for all steps in got_steps for predecessors. If no predecessors, assign the self as predecessor
                     for step in got_steps:
                         if len(got_steps[step].predecessors) == 0:
                             got_steps[step].add_predecessor(self)
@@ -390,61 +409,160 @@ class Generate(Operation):
                             #remove whitespaces from the knowledge request
                             knowledge_list_array = [elem.strip() for elem in knowledge_list_array]
                             knowledge_list[knowledge_request["KnowledgeID"]] = knowledge_list_array
-                            # print("knowledge_ID:", knowledge_request["KnowledgeID"], knowledge_request["Node"])
+                            # print("knowledge_ID:", knowledge_request["KnowledgeID"], knowledge_request["Query"])
                             # print("knowledge_list:", knowledge_list)
             index += 1
 
         #populate the 
         if self.thoughts[-1].state["phase"] != "output" and new_state["phase"] == "steps" and new_state is not None and "instruction" in new_state and new_state["instruction"]["Function"] is not None:
+            self.thoughts[-1].state["input"] = ""
             #get the two knowledge lists by obtaining the first set of parantheses
-            knowledge_ids = new_state["instruction"]["Function"]
-            knowledge_ids = knowledge_ids[knowledge_ids.find("(")+1:knowledge_ids.find(")")]
-            knowledge_ids = knowledge_ids.split(",")
-            #remove any spaces in the list
-            knowledge_ids = [elem.strip() for elem in knowledge_ids]
-            if "intersect" in new_state["instruction"]["Function"].lower():
-                #intersect the nonzero amount of elements in the list
-                intersected_list = []
-                for knowledge_id in knowledge_ids:
-                    if knowledge_id in knowledge_list:
-                        if len(intersected_list) == 0:
-                            intersected_list = knowledge_list[knowledge_id]
+            for knowledge_ids in new_state["instruction"]["Function"]:
+                pattern1 = r"\(\['(.*?)'\],\s*(\w+)\)"
+                pattern2 = r"\(*(\w+),\s\['(.*?)'\]\)"
+                # Match the pattern
+                match1 = re.search(pattern1, knowledge_ids)
+                match2 = re.search(pattern2, knowledge_ids)
+
+                if match1:
+                    # Extract the array of values and the variable
+                    group1 = match1.group(1)  # This will be a comma-separated string of values
+                    group2 = match1.group(2)    # This will be the variable name
+
+                    # Convert the comma-separated string into a list
+                    group1 = group1.split(", ")
+
+                    knowledge_ids = [[elem.strip() for elem in group1], group2]
+                    for i in range(len(knowledge_ids[0])):
+                        if knowledge_ids[0][i][0] == knowledge_ids[0][i][-1] and (knowledge_ids[0][i][0] == "'" or knowledge_ids[0][i][0] == '"'):
+                            knowledge_ids[0][i] = knowledge_ids[0][i][1:-1]
+                        #if first value is a single or double quote, remove them
+                        if knowledge_ids[0][i][0] == "'" or knowledge_ids[0][i][0] == '"':
+                            knowledge_ids[0][i] = knowledge_ids[0][i][1:]
+                        #if last value is a single or double quote, remove them
+                        if knowledge_ids[0][i][-1] == "'" or knowledge_ids[0][i][-1] == '"':
+                            knowledge_ids[0][i] = knowledge_ids[0][i][:-1]
+                elif match2:
+                    # Extract the array of values and the variable
+                    group1 = match2.group(1)
+                    group2 = match2.group(2)
+
+                    # Convert the comma-separated string into a list
+                    group2 = group2.split(", ")
+
+                    knowledge_ids = [group1, [elem.strip() for elem in group2]]
+                    
+                    for i in range(len(knowledge_ids[1])):
+                        if knowledge_ids[1][i][0] == knowledge_ids[1][i][-1] and (knowledge_ids[1][i][0] == "'" or knowledge_ids[1][i][0] == '"'):
+                            knowledge_ids[1][i] = knowledge_ids[1][i][1:-1]
+                        #if first value is a single or double quote, remove them
+                        if knowledge_ids[1][i][0] == "'" or knowledge_ids[1][i][0] == '"':
+                            knowledge_ids[1][i] = knowledge_ids[1][i][1:]
+                        #if last value is a single or double quote, remove them
+                        if knowledge_ids[1][i][-1] == "'" or knowledge_ids[1][i][-1] == '"':
+                            knowledge_ids[1][i] = knowledge_ids[1][i][:-1]
+                else:
+                    
+                    knowledge_ids = knowledge_ids[knowledge_ids.find("(")+1:knowledge_ids.find(")")]
+                    knowledge_ids = knowledge_ids.split(",")
+                    knowledge_ids = [elem.strip() for elem in knowledge_ids]
+                if "intersect" in str(new_state["instruction"]["Function"]).lower():
+                    #intersect the nonzero amount of elements in the list
+                    intersected_list = []
+                    for knowledge_id in knowledge_ids:
+                        if type(knowledge_id) == list:
+                            if len(intersected_list) == 0:
+                                intersected_list = knowledge_id
+                            else:
+                                intersected_list = list(set(intersected_list) & set(knowledge_id))
                         else:
-                            intersected_list = list(set(intersected_list) & set(knowledge_list[knowledge_id]))
-                if self.thoughts[-1].state["debug_level"] > 2:
-                    print("Intersection Function performed on:", str(knowledge_ids), "resulting in:", intersected_list)
-                self.thoughts[-1].state["input"] = intersected_list
-                knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
-            elif "union" in new_state["instruction"]["Function"].lower():
-                #union the nonzero amount of elements in the list
-                union_list = []
-                for knowledge_id in knowledge_ids:
-                    if knowledge_id in knowledge_list:
-                        if len(union_list) == 0:
-                            union_list = knowledge_list[knowledge_id]
+                            if knowledge_id in knowledge_list:
+                                if len(intersected_list) == 0:
+                                    intersected_list = knowledge_list[knowledge_id]
+                                else:
+                                    intersected_list = list(set(intersected_list) & set(knowledge_list[knowledge_id]))
+                    if self.thoughts[-1].state["debug_level"] >= 2:
+                        print("Intersection Function performed on:", str(knowledge_ids), "resulting in:", intersected_list)
+                    self.thoughts[-1].state["input"] = intersected_list
+                elif "union" in str(new_state["instruction"]["Function"]).lower():
+                    #union the nonzero amount of elements in the list
+                    union_list = []
+                    for knowledge_id in knowledge_ids:
+                        if type(knowledge_id) == list:
+                            if len(union_list) == 0:
+                                union_list = knowledge_id
+                            else:
+                                union_list = list(set(union_list) | set(knowledge_id))
                         else:
-                            union_list = list(set(union_list) | set(knowledge_list[knowledge_id]))
-                if self.thoughts[-1].state["debug_level"] > 2:
-                    print("Union Function performed on:", str(knowledge_ids), "resulting in:", union_list)
-                self.thoughts[-1].state["input"] = union_list
-                knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
-            elif "difference" in new_state["instruction"]["Function"].lower():
-                #difference the nonzero amount of elements in the list
-                difference_list = []
-                for knowledge_id in knowledge_ids:
-                    if knowledge_id in knowledge_list:
-                        if len(difference_list) == 0:
-                            difference_list = knowledge_list[knowledge_id]
+                            if knowledge_id in knowledge_list:
+                                if len(union_list) == 0:
+                                    union_list = knowledge_list[knowledge_id]
+                                else:
+                                    union_list = list(set(union_list) | set(knowledge_list[knowledge_id]))
+                    if self.thoughts[-1].state["debug_level"] >= 2:
+                        print("Union Function performed on:", str(knowledge_ids), "resulting in:", union_list)
+                    self.thoughts[-1].state["input"] = union_list
+                elif "difference" in str(new_state["instruction"]["Function"]).lower():
+                    #difference the nonzero amount of elements in the list
+                    difference_list = []
+                    for knowledge_id in knowledge_ids:
+                        if type(knowledge_id) == list:
+                            if len(difference_list) == 0:
+                                difference_list = knowledge_id
+                            else:
+                                difference_list = list(set(difference_list) - set(knowledge_id))
                         else:
-                            difference_list = list(set(difference_list) - set(knowledge_list[knowledge_id]))
-                if self.thoughts[-1].state["debug_level"] > 2:
-                    print("Difference Function performed on:", str(knowledge_ids), "resulting in:", difference_list)
-                self.thoughts[-1].state["input"] = difference_list
-                knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
-            else:
-                self.logger.warning("Instruction function not recognized", new_state["instruction"]["Function"])
-                # print("Instruction function not recognized", new_state["instruction"]["Function"])
-            
+                            if knowledge_id in knowledge_list:
+                                if len(difference_list) == 0:
+                                    difference_list = knowledge_list[knowledge_id]
+                                else:
+                                    difference_list = list(set(difference_list) - set(knowledge_list[knowledge_id]))
+                    if self.thoughts[-1].state["debug_level"] >= 2:
+                        print("Difference Function performed on:", str(knowledge_ids), "resulting in:", difference_list)
+                    self.thoughts[-1].state["input"] = difference_list
+                elif "ifelement" in str(new_state["instruction"]["Function"]).lower():
+                    #if first value is in the second value, return true, else false
+                    #check if the first and last characters are single or double quotes. If so, remove them only if the first and last characters are the same
+                    
+                    for i in range(len(knowledge_ids)):
+                        if knowledge_ids[i][0] == knowledge_ids[i][-1] and (knowledge_ids[i][0] == "'" or knowledge_ids[i][0] == '"'):
+                            knowledge_ids[i] = knowledge_ids[i][1:-1]
+                    if len(knowledge_ids) == 2:
+                        if type(knowledge_ids[0]) == list:
+                            self.thoughts[-1].state["input"] = []
+                            for i in range(len(knowledge_ids[0])):
+                                if knowledge_ids[0][i] in knowledge_list[knowledge_ids[1]]:
+                                    self.thoughts[-1].state["input"].append(knowledge_ids[0][i])
+                        elif type(knowledge_ids[1]) == list:
+                            self.thoughts[-1].state["input"] = []
+                            for i in range(len(knowledge_ids[1])):
+                                if knowledge_ids[1][i] in knowledge_list[knowledge_ids[0]]:
+                                    self.thoughts[-1].state["input"].append(knowledge_ids[1][i])
+                        else:
+                            if knowledge_ids[0] in knowledge_list[knowledge_ids[1]]:
+                                self.thoughts[-1].state["input"] += str(knowledge_ids[0]) + " is in " + str(knowledge_ids[1]) + "\n"
+                            else:
+                                self.thoughts[-1].state["input"] += str(knowledge_ids[0]) + " is NOT in " + str(knowledge_ids[1])+ "\n"
+                    else:
+                        self.thoughts[-1].state["input"] += str(knowledge_ids[0]) + " is NOT in " + str(knowledge_ids[1])+ "\n"
+                    if self.thoughts[-1].state["debug_level"] >= 2:
+                        print("IfElement Function performed on:", str(knowledge_ids), "resulting in:", self.thoughts[-1].state["input"])
+                elif "return" in str(new_state["instruction"]["Function"]).lower():
+                    #return the value of the knowledge ID
+                    if len(knowledge_ids) == 1:
+                        if knowledge_ids[0] in knowledge_list:
+                            self.thoughts[-1].state["input"] = knowledge_list[knowledge_ids[0]]
+                        else:
+                            self.thoughts[-1].state["input"] = []
+                    else:
+                        self.thoughts[-1].state["input"] = []
+                    if self.thoughts[-1].state["debug_level"] >= 2:
+                        print("Return Function performed on:", str(knowledge_ids), "resulting in:", self.thoughts[-1].state["input"])
+                else:
+                    self.logger.warning("Instruction function not recognized", new_state["instruction"]["Function"])
+                    # print("Instruction function not recognized", new_state["instruction"]["Function"])
+                
+            knowledge_list["StepID_"+new_state["StepID"]] = self.thoughts[-1].state["input"]
         if self.thoughts[-1].state["phase"] == "output":
             self.logger.info("Output: %s", self.thoughts[-1].state["input"])
             print("Output:", self.thoughts[-1].state["input"])
