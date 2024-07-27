@@ -13,11 +13,12 @@ class ESCARGOTParser:
     Inherits from the Parser class and implements its abstract methods.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, logger: logging.Logger = None) -> None:
         """
         Inits the response cache.
         """
         self.cache = {}
+        self.logger = logger
 
     def parse_generate_answer(self, state: Dict, texts: List[str]) -> List[Dict]:
         """
@@ -36,19 +37,14 @@ class ESCARGOTParser:
         if type(texts) == str:
             texts = [texts]
         for text in texts:
-            if "debug_level" in state:
-                if state["debug_level"] > 1:
-                    print(f"Got response: {text}")
+            self.logger.debug(f"Got response: {text}")
             if state["method"] == "got":
                 try:
                     if state["phase"] == "planning":
                         new_state = state.copy()
                         new_state["input"] = text
-                        #skipping plan_assessment phase for now
-                        # new_state["phase"] = "plan_assessment"
                         new_state["phase"] = "plan_assessment"
                         new_state["generate_successors"] = 1
-                        # print("planning:", text)
                     elif state["phase"] == "plan_assessment":
                         new_state = state.copy()
                         #convert text to json and select from the input the top strategy
@@ -60,8 +56,7 @@ class ESCARGOTParser:
                             approach = int(approach)-1
                             new_state["input"] = new_state["input"][approach]
                         except Exception as e:
-                            logging.error(f"Could not convert text to xml: {text}. Encountered exception: {e}")
-
+                            self.logger.warning(f"Could not convert text to xml: {text}. Encountered exception: {e}")
                         new_state["phase"] = "xml_conversion"
                         new_state["generate_successors"] = 1
                     elif state["phase"] == "xml_conversion":
@@ -73,9 +68,8 @@ class ESCARGOTParser:
                         instructions, edges = parse_xml(text)
                         new_state["instructions"] = instructions
                         new_state["edges"] = edges
-                        if state["debug_level"] > 0:
-                            print("original instructions:", instructions)
-                            print("original edges:", edges)
+                        self.logger.info("PARSER.parse_generate_answer - Got instructions: \n%s",instructions)
+                        self.logger.info("PARSER.parse_generate_answer - Got edges: \n%s",edges)
                     elif state["phase"] == "xml_cleanup":
                         new_state = state.copy()
                         new_state["input"] = text
@@ -83,9 +77,8 @@ class ESCARGOTParser:
                         instructions, edges = parse_xml(text)
                         new_state["instructions"] = instructions
                         new_state["edges"] = edges
-                        if state["debug_level"] > 0:
-                            print("instructions:", instructions)
-                            print("edges:", edges)
+                        self.logger.info(f"Got instructions: {instructions}")
+                        self.logger.info(f"Got edges: {edges}")
                     elif state["phase"] == "steps":
                         new_state = state.copy()
                         new_state["input"] = text
@@ -93,8 +86,8 @@ class ESCARGOTParser:
                         new_state = state.copy()
                         new_state["input"] = text
                 except Exception as e:
-                    logging.error(
-                        f"Could not parse step answer: {text}. Encountered exception: {e}"
+                    self.logger.error(
+                        f"PARSER.parse_generate_answer - Could not parse step answer: {text}. Encountered exception: {e}"
                     )
             
         return new_state

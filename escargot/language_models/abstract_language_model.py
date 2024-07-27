@@ -11,7 +11,7 @@ class AbstractLanguageModel(ABC):
     """
 
     def __init__(
-        self, config_path: Any = "", model_name: str = "", cache: bool = False
+        self, config_path: Any = "", model_name: str = "", cache: bool = False, logger: logging.Logger = None
     ) -> None:
         """
         Initialize the AbstractLanguageModel instance with configuration, model details, and caching options.
@@ -23,7 +23,7 @@ class AbstractLanguageModel(ABC):
         :param cache: Flag to determine whether to cache responses. Defaults to False.
         :type cache: bool
         """
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logger
         self.config: Dict = None
         self.model_name: str = model_name
         self.cache = cache

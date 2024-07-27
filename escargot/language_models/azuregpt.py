@@ -6,6 +6,7 @@ from typing import List, Dict, Union
 import openai
 from openai import AzureOpenAI, OpenAIError
 from openai.types.chat.chat_completion import ChatCompletion
+import logging
 
 from .abstract_language_model import AbstractLanguageModel
 
@@ -18,7 +19,7 @@ class AzureGPT(AbstractLanguageModel):
     """
 
     def __init__(
-        self, config_path: str = "", model_name: str = "chatgpt", cache: bool = False
+        self, config_path: str = "", model_name: str = "chatgpt", cache: bool = False, logger: logging.Logger = None
     ) -> None:
         """
         Initialize the ChatGPT instance with configuration, model details, and caching options.
@@ -30,7 +31,7 @@ class AzureGPT(AbstractLanguageModel):
         :param cache: Flag to determine whether to cache responses. Defaults to False.
         :type cache: bool
         """
-        super().__init__(config_path, model_name, cache)
+        super().__init__(config_path, model_name, cache, logger)
         self.config: Dict = self.config[model_name]
         # The model_id is the id of the model that is used for chatgpt, i.e. gpt-4, gpt-3.5-turbo, etc.
         self.model_id: str = self.config["model_id"]
@@ -130,10 +131,6 @@ class AzureGPT(AbstractLanguageModel):
         self.cost = (
             self.prompt_token_cost * prompt_tokens_k
             + self.response_token_cost * completion_tokens_k
-        )
-        self.logger.info(
-            f"This is the response from chatgpt: {response}"
-            f"\nThis is the cost of the response: {self.cost}"
         )
         return response
 

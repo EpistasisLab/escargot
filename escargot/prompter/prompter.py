@@ -2,6 +2,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Dict, List
 import re
+import logging
 
 
 class ESCARGOTPrompter:
@@ -65,7 +66,7 @@ If the question is a multiple choice question, the approaches that include the s
 
 The knowledge graph contains node types: {node_types}.
 The knowledge graph contains relationships: {relationship_types}.
- d
+
 Return a XML formatted list with all the approaches in Approach tags. Each approach should be within <Approach> tags and will have an incremental <ApproachID> value within it. The score should be an integer between 1-10 within <Score> tags.
 An example is as follows:
 <Approaches>
@@ -302,18 +303,14 @@ Train of thoughts:
 
 Output from each step:
 {knowledge_list_str}
-
-Full Output from the last step:
-{input}
-
-Summarize using only the information from the "Train of Thoughts" and "Output from each step" and the "Full Output from the last step". After summarizing the information, answer the question.
-Do not include any additional information or reasoning beyond what is provided."""
-    def __init__(self,vector_db = None, lm = None, memgraph_client = None, node_types = "", relationship_types = "") -> None:
+Describe the thought process above, and then answer the question. Do not include any additional information or reasoning beyond what is provided."""
+    def __init__(self,vector_db = None, lm = None, memgraph_client = None, node_types = "", relationship_types = "", logger: logging.Logger = None):
         self.vector_db = vector_db
         self.lm = lm
         self.memgraph_client = memgraph_client
         self.node_types = node_types
         self.relationship_types = relationship_types
+        self.logger = logger
         pass
      
     def generate_prompt(
@@ -349,10 +346,8 @@ Do not include any additional information or reasoning beyond what is provided."
             elif kwargs["phase"] == "plan_assessment":
                 return self.plan_assessment_prompt.format(question=question, approach_1=input[0], approach_2=input[1], approach_3=input[2], node_types=self.node_types, relationship_types=self.relationship_types)
             elif kwargs["phase"] == "xml_conversion":
-                # print("strategy",input)
                 return self.xml_conversion_prompt.format(instructions=input, node_types=self.node_types, relationship_types=self.relationship_types)
             elif kwargs["phase"] == "xml_cleanup":
-                # print("strategy",input)
                 return self.xml_cleanup_prompt.format(xml=input, node_types=self.node_types, relationship_types=self.relationship_types)
             elif kwargs["phase"] == "steps":
                 #check for all steps in got_steps for predecessors. If no predecessors, assign the self as predecessor
@@ -360,12 +355,14 @@ Do not include any additional information or reasoning beyond what is provided."
                     return None
                 else:
                     current_instruction = kwargs["instruction"]
-                    if kwargs['debug_level'] > 1:
-                        print("current_instruction:", current_instruction)
+                    self.logger.info(f"Current instruction: {current_instruction}")
                     if current_instruction['InstructionType'] == "KnowledgeRequest":
                         knowledge_requests = current_instruction["KnowledgeRequests"]
+                        self.logger.info("Knowledge Requests : %s", knowledge_requests)
                         for knowledge_request in knowledge_requests:
                             statement_to_embed = knowledge_request["Query"]
+                            if statement_to_embed == "" or statement_to_embed is None:
+                                return []
                             for i in range(statement_to_embed.count("Knowledge_")):
                                 #get the number that follows "Knowledge_" and fill it in from the knowledge_list
                                 knowledge_number = re.search(r'Knowledge_(\d+)', statement_to_embed).group(1)
@@ -377,9 +374,8 @@ Do not include any additional information or reasoning beyond what is provided."
                             statement_to_embed_cleaned = statement_to_embed.replace("!","")
                             # If it's a cypher query, then execute the query and return the results directly
                             if self.memgraph_client is not None:
-                                knowledge_array = self.memgraph_client.execute(self.lm, self.memgraph_prompt_1.format(schema=self.memgraph_client.schema) + str(self.memgraph_prompt_2) + str(self.memgraph_prompt_3.format(instruction=str(current_instruction["Instruction"]),cypher=str(statement_to_embed))),str(statement_to_embed),debug_level=kwargs['debug_level'])
-                                if kwargs['debug_level'] > 1:
-                                    print("Cypher knowledge for ",statement_to_embed,":",str(knowledge_array))
+                                knowledge_array = self.memgraph_client.execute(self.lm, self.memgraph_prompt_1.format(schema=self.memgraph_client.schema) + str(self.memgraph_prompt_2) + str(self.memgraph_prompt_3.format(instruction=str(current_instruction["Instruction"]),cypher=str(statement_to_embed))),str(statement_to_embed))
+                                self.logger.info(f"Cypher knowledge for {statement_to_embed}: {str(knowledge_array)}")
                                 if knowledge_array != []:
                                     knowledge = ",".join(knowledge_array)
 
@@ -404,10 +400,7 @@ Do not include any additional information or reasoning beyond what is provided."
                                         embedded_question = self.lm.get_embedding(statement_to_embed)
                                         knowledge_array,distances = self.vector_db.get_knowledge(embedded_question)
                                         knowledge = "\n".join(knowledge_array)
-                                    if kwargs['debug_level'] > 1:
-                                        print("Vector DB knowledge for ",statement_to_embed,":",knowledge)
-
-                                
+                                    self.logger.info(f"Vector DB knowledge for {statement_to_embed}: {knowledge}")
                                 return knowledge
                             if knowledge == "":
                                 knowledge = "No knowledge"
@@ -419,11 +412,16 @@ Do not include any additional information or reasoning beyond what is provided."
                 for step in kwargs["instructions"]:
                     steps += "Step " + step["StepID"] + ": " + step["Instruction"] + "\n"
                 knowledge_list_str = ""
+                index = 0
                 for id, knowledge in knowledge_list.items():
                     #limit the string to 256 characters
-                    if len(str(knowledge)) > 256:
+                    #if it is the last knowledge, knowledge should be the entire string
+                    if len(str(knowledge)) > 256 and index != len(knowledge_list)-1:
                         knowledge = str(knowledge)[:256] + "..."
+                    else:
+                        knowledge = str(knowledge)
                     knowledge_list_str += f"{id}: {knowledge}\n"
-                return self.output_prompt.format(question=question, steps=steps, input=input, knowledge_list_str=knowledge_list_str)
+                    index += 1
+                return self.output_prompt.format(question=question, steps=steps, knowledge_list_str=knowledge_list_str)
         else:
             raise AssertionError(f"Method {method} is not implemented yet.")

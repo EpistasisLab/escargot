@@ -1,5 +1,4 @@
 from __future__ import annotations
-import logging
 from typing import Iterator, Dict, Optional
 import itertools
 
@@ -18,6 +17,5 @@ class Thought:
         :param state: The state of the thought. Defaults to None.
         :type state: Optional[Dict]
         """
-        self.logger: logging.Logger = logging.getLogger(self.__class__.__name__)
         self.id: int = next(Thought._ids)
         self.state: Dict = state

@@ -6,8 +6,8 @@ import json
 import logging
 
 class MemgraphClient:
-    def __init__(self, config_path):
-        self.logger = logging.getLogger(self.__class__.__name__)
+    def __init__(self, config_path, logger):
+        self.logger = logger
         self.config: Dict = None
         if type(config_path) == dict:
             self.config = config_path
@@ -89,14 +89,12 @@ class MemgraphClient:
         """
         self.cache = {}
 
-    def execute(self, lm, query, statement, debug_level=0):
+    def execute(self, lm, query, statement):
         if statement in self.cache:
             results = self.cache[statement]
         else:
             num_responses = self.num_responses
             response = ''
-            if debug_level > 2:
-                print("Memgraph LM conversion query:",query)
             if num_responses == 1:
                 response = self.chat([{"role": "system", "content": query}], num_responses)
             else:
@@ -119,6 +117,8 @@ class MemgraphClient:
                         if response.startswith("Answer:"):
                             response= response[8:].strip()
                         
+                        if response == "" or response == None:
+                            continue
                         #remove ```cypher from the response
                         response = response.replace("```cypher", "")
 
@@ -132,16 +132,12 @@ class MemgraphClient:
                         response = response.replace("<-", "-")
                         response = response.replace("->", "-")
                         
-                        if debug_level > 1:
-                            print("Memgraph request:",response)
-
+                        self.logger.info(f"Executing memgraph for statement: {statement}, response: {response}")
                         memgraph_results = self.memgraph.execute_and_fetch(response)
                         memgraph_results = list(memgraph_results)
                     except Exception as e:
-                        if debug_level > 0:
-                            print(f"Error in memgraph: {e}, trying again {iter}")
-            if debug_level > 1:
-                print("memgraph_results:",memgraph_results)
+                        self.logger.error(f"Error in memgraph: {e}, trying again {iter}")
+            self.logger.info(f"Memgraph results: {memgraph_results}")
             results = []
             # get the value in the dictionary x in memgraph_results
             for value in memgraph_results:

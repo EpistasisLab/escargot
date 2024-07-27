@@ -123,10 +123,6 @@ class ChatGPT(AbstractLanguageModel):
             self.prompt_token_cost * prompt_tokens_k
             + self.response_token_cost * completion_tokens_k
         )
-        self.logger.info(
-            f"This is the response from chatgpt: {response}"
-            f"\nThis is the cost of the response: {self.cost}"
-        )
         return response
 
     def get_response_texts(
