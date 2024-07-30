@@ -118,4 +118,3 @@ class Escargot:
         if self.controller.final_thought is not None:
             output = self.controller.final_thought.state['input']
         return output
-    

@@ -5,6 +5,8 @@ from escargot.language_models import AbstractLanguageModel
 from escargot.operations import GraphOfOperations, Thought
 from escargot.prompter import ESCARGOTPrompter
 from escargot.parser import ESCARGOTParser
+from escargot.coder import Coder
+import copy
 
 class Controller:
     """
@@ -34,9 +36,10 @@ class Controller:
         self.problem_parameters = problem_parameters
         self.run_executed = False
         self.got_steps = {}
-        self.knowledge_list = {}
         self.final_thought = None
         self.execution_queue = []
+        self.max_tries = 3
+        self.coder = Coder()
 
     def initialize_execution_queue(self) -> None:
         """
@@ -60,13 +63,24 @@ class Controller:
             return None
 
         current_operation = self.execution_queue.pop(0)
+        current_operation_backup = copy.copy(current_operation)
         
-        try:
-            current_operation.execute(
-                self.lm, self.prompter, self.parser, self.got_steps, self.knowledge_list, self.logger, **self.problem_parameters
-            )
-        except Exception as e:
-            self.logger.error("Error executing operation %s: %s", current_operation.operation_type, e)
+        tries = 0
+        while tries < self.max_tries:
+            try:
+                current_operation.execute(
+                    self.lm, self.prompter, self.parser, self.got_steps, self.logger, self.coder, **self.problem_parameters
+                )
+                break
+            except Exception as e:
+                self.logger.error("Error executing operation %s: %s", current_operation.operation_type, e)
+                current_operation = copy.copy(current_operation_backup)
+                tries += 1
+
+        del current_operation_backup
+
+        if tries == self.max_tries:
+            self.logger.error("Max tries reached on executing operation %s", current_operation.operation_type)
             raise
         
         for operation in current_operation.successors:
@@ -112,19 +126,6 @@ class Controller:
             "operation": operation.operation_type.name,
             "thoughts": [thought.state for thought in operation.get_thoughts()],
         }
-        if any([thought.scored for thought in operation.get_thoughts()]):
-            operation_serialized["scored"] = [thought.scored for thought in operation.get_thoughts()]
-            operation_serialized["scores"] = [thought.score for thought in operation.get_thoughts()]
-        if any([thought.validated for thought in operation.get_thoughts()]):
-            operation_serialized["validated"] = [thought.validated for thought in operation.get_thoughts()]
-            operation_serialized["validity"] = [thought.valid for thought in operation.get_thoughts()]
-        if any([thought.compared_to_ground_truth for thought in operation.get_thoughts()]):
-            operation_serialized["compared_to_ground_truth"] = [
-                thought.compared_to_ground_truth for thought in operation.get_thoughts()
-            ]
-            operation_serialized["problem_solved"] = [
-                thought.solved for thought in operation.get_thoughts()
-            ]
         return operation_serialized
 
     def output_graph(self, path: str) -> None:

@@ -6,14 +6,13 @@ from abc import ABC, abstractmethod
 import itertools
 import copy
 import re
-from .utils import remove_quotes, process_knowledge_ids, apply_function, get_knowledge_list_from_input
+from .utils import remove_quotes, process_knowledge_ids, apply_function
 
 from escargot.operations.thought import Thought
 from escargot.language_models import AbstractLanguageModel
 from escargot.prompter import ESCARGOTPrompter
 from escargot.parser import ESCARGOTParser
-
-
+from escargot.coder import Coder
 
 class OperationType(Enum):
     """
@@ -41,6 +40,7 @@ class Operation(ABC):
         self.predecessors: List[Operation] = []
         self.successors: List[Operation] = []
         self.executed: bool = False
+        self.coder = None
 
     def can_be_executed(self) -> bool:
         """
@@ -87,7 +87,7 @@ class Operation(ABC):
         operation.predecessors.append(self)
 
     def execute(
-        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, got_steps: Dict, knowledge_list : Dict, logger : logging.Logger, **kwargs
+        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, got_steps: Dict, logger : logging.Logger, coder : Coder, **kwargs
     ) -> None:
         """
         Execute the operation, assuring that all predecessors have been executed.
@@ -100,22 +100,21 @@ class Operation(ABC):
         :type parser: ESCARGOTParser
         :param got_steps: The dictionary of steps in the Graph of Operations.
         :type got_steps: Dict
-        :param knowledge_list: The dictionary of knowledge lists.
-        :type knowledge_list: Dict
         :param kwargs: Additional parameters for execution.
         """
         assert self.can_be_executed(), "Not all predecessors have been executed"
         self.logger = logger
+        self.coder = coder
         self.logger.debug(
             "Beginning execution of operation %d of type %s", self.id, self.operation_type
         )
-        self._execute(lm, prompter, parser, got_steps, knowledge_list, **kwargs)
+        self._execute(lm, prompter, parser, got_steps, **kwargs)
         self.logger.debug("Operation %d executed", self.id)
         self.executed = True
 
     @abstractmethod
     def _execute(
-        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, got_steps: Dict, knowledge_list : Dict, **kwargs
+        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, got_steps: Dict, **kwargs
     ) -> None:
         """
         Abstract method for the actual execution of the operation.
@@ -176,51 +175,53 @@ class Generate(Operation):
         return self.thoughts
     
     def generate_from_single_thought(
-        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, base_state: Dict, knowledge_list: Dict
+        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, base_state: Dict
     ):
         prompts = []
         responses = []
+        new_states = []
         if len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] == "output":
             temp_state = copy.deepcopy(base_state)
             temp_state["phase"] = "output"
-            prompts.append(prompter.generate_prompt( knowledge_list, **temp_state))
+            temp_state['input'] = self.coder.step_output
+            prompts.append(prompter.generate_prompt( **temp_state))
             self.logger.warning("Prompt for LM: \n%s", prompts[-1])
-        #within a step, if there are knowledge requests needed, and there are multiple, the requests should be made separate
-        elif "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["KnowledgeRequests"] is not None:
-            for knowledge_request in base_state["instruction"]["KnowledgeRequests"]:
-                temp_state = copy.deepcopy(base_state)
-                temp_state["instruction"]["KnowledgeRequests"] = [knowledge_request]
-                prompts.append(prompter.generate_prompt( knowledge_list, **temp_state))
-                responses.append(prompts[-1])
-            return prompts, responses
+        elif "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Code"] is not None:
+            code = base_state["instruction"]["Code"][0]
+            new_code, compiled = self.coder.execute_code(code, base_state["instruction"]["Instruction"], base_state["StepID"], prompter, self.logger)
+            new_state  = {**base_state, "input": new_code, "compiled": compiled}
+            new_states.append(new_state)
+            self.logger.info("Code: %s", new_code)
+            self.logger.info("Compiled: %s", compiled)
+            
+            return prompts, responses, new_states
         else:
-            prompts.append(prompter.generate_prompt( knowledge_list, **base_state))
+            prompts.append(prompter.generate_prompt( **base_state))
         for prompt in prompts:
             if prompt is None or prompt == "":
                 self.logger.warning("Prompt for LM is empty")
                 return prompt, []
             self.logger.debug("Prompt for LM: %s", prompt)
             
-            if len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] != "output" and "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is not None:
-                responses.append("Function: " + str(base_state["instruction"]["Function"]))
-            elif len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] != "output" and "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Function"] is None:
-                responses.append("No Function")
-            else:
-                for i in range(self.num_branches_response):
-                    tries = 0
-                    while tries < 3:
-                        try:
-                            responses.append(lm.get_response_texts(
-                                lm.query(prompt, num_responses=1)
-                            ))
-                            break
-                        except Exception as e:
-                            self.logger.warning("Error in LM: %s, trying again with prompt: %s", e, prompt)
-                            tries += 1
-        return prompts, responses
+            for i in range(self.num_branches_response):
+                tries = 0
+                while tries < 3:
+                    try:
+                        response =lm.get_response_texts(
+                            lm.query(prompt, num_responses=1)
+                        )
+                        new_state = parser.parse_generate_answer(base_state, response)
+                        break
+                    except Exception as e:
+                        self.logger.warning("Error in LM: %s, trying again with prompt: %s", e, prompt)
+                        tries += 1
+                responses.append(response)
+                new_states.append(new_state)
+        
+        return prompts, responses, new_states
 
     def _execute(
-        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, got_steps: Dict, knowledge_list : Dict, **kwargs
+        self, lm: AbstractLanguageModel, prompter: ESCARGOTPrompter, parser: ESCARGOTParser, got_steps: Dict, **kwargs
     ) -> None:
         """
         Executes the Generate operation by generating thoughts from the predecessors.
@@ -235,8 +236,6 @@ class Generate(Operation):
         :type parser: ESCARGOTParser
         :param got_steps: The dictionary of steps in the Graph of Operations.
         :type got_steps: Dict
-        :param knowledge_list: The dictionary of knowledge lists.
-        :type knowledge_list: Dict
         :param kwargs: Additional parameters for execution.
         """
         previous_thoughts: List[Thought] = self.get_previous_thoughts()
@@ -255,18 +254,7 @@ class Generate(Operation):
                 base_state.pop("generate_successors")
             if "num_branches_response" in base_state:
                 self.num_branches_response = base_state.pop("num_branches_response")
-            if len(self.get_thoughts()) > 0 and "StepID" in self.get_thoughts()[0].state:
-                base_state["StepID"] = self.get_thoughts()[0].state["StepID"]
-                for instruction in base_state["instructions"]:
-                    if instruction["StepID"] == base_state["StepID"] or instruction["StepID"] == int(base_state["StepID"]) or instruction["StepID"] == str("StepID_" + base_state["StepID"]):
-                        base_state["instruction"] = instruction
-                        break
-                
-            prompts, responses = self.generate_from_single_thought(
-                lm, prompter, base_state, knowledge_list
-            )
             
-            self.logger.info("Responses from LM: %s", responses)
         elif len(previous_thoughts) > 1:
 
             base_states = [thought.state for thought in previous_thoughts]
@@ -277,25 +265,26 @@ class Generate(Operation):
             base_state["input"] = input_array
             if "instruction" in base_state:
                 base_state.pop("instruction")
-            if len(self.get_thoughts()) > 0 and "StepID" in self.get_thoughts()[0].state:
-                base_state["StepID"] = self.get_thoughts()[0].state["StepID"]
-                for instruction in base_state["instructions"]:
-                    if instruction["StepID"] == base_state["StepID"] or instruction["StepID"] == int(base_state["StepID"]) or instruction["StepID"] == str("StepID_" + base_state["StepID"]):
-                        base_state["instruction"] = instruction
-                        break
-            prompts, responses = self.generate_from_single_thought(
-                lm, prompter, base_state, knowledge_list
-            )
-            self.logger.info("Responses from LM: %s", responses)
+        if len(self.get_thoughts()) > 0 and "StepID" in self.get_thoughts()[0].state:
+            base_state["StepID"] = self.get_thoughts()[0].state["StepID"]
+            for instruction in base_state["instructions"]:
+                if instruction["StepID"] == base_state["StepID"] or instruction["StepID"] == int(base_state["StepID"]) or instruction["StepID"] == str("StepID_" + base_state["StepID"]):
+                    base_state["instruction"] = instruction
+                    break
+            
+        prompts, responses, new_states = self.generate_from_single_thought(
+            lm, prompter, parser, base_state
+        )
+        self.logger.info("Responses from LM: %s", responses)
         index = 0
-        new_state = None
-        for response in responses:
-            new_state = parser.parse_generate_answer(base_state, response)
+        for new_state in new_states:
             if new_state is not None:
-                if len(previous_thoughts) > 1:
+                if len(previous_thoughts) > 1 and len(prompts) >= 1:
                     new_state = {**base_state, **new_state, "prompt": prompts[index]}
-                else:
+                elif len(prompts) >= 1:
                     new_state = {**base_state, **new_state, "prompt": prompts[0]}
+                else:
+                    new_state = {**base_state, **new_state, "prompt": prompts}
                 if len(self.thoughts) > 0:
                     if self.thoughts[-1].state["phase"] == "plan_assessment":
                         if type(self.thoughts[-1].state["input"]) == str:
@@ -362,69 +351,8 @@ class Generate(Operation):
                     got_steps[str(last_step)].successors[-1].thoughts[-1].state["input"] = ""
                     self.logger.info("GoT Steps From XML: %s", got_steps)
                     
-                #populate knowledge_list with condensed knowledge
-                if new_state["phase"] == "steps" and "instruction" in new_state:
-                    if new_state["instruction"]["KnowledgeRequests"] is not None:
-                        knowledge_list_array = get_knowledge_list_from_input(new_state, self.logger)
-                        knowledge_request = new_state["instruction"]["KnowledgeRequests"][index]
-                        if knowledge_request["KnowledgeID"] not in knowledge_list:
-                            knowledge_list[knowledge_request["KnowledgeID"]] = knowledge_list_array
             index += 1
 
-        #check for function in instruction and apply it to knowledge
-        if (self.thoughts[-1].state["phase"] != "output" and 
-            new_state["phase"] == "steps" and 
-            new_state is not None and 
-            "instruction" in new_state and 
-            new_state["instruction"].get("Function")):
-
-            self.thoughts[-1].state["input"] = ""
-            for knowledge_ids in new_state["instruction"]["Function"]:
-
-                knowledge_ids_str = knowledge_ids
-                pattern1 = r"\(\['(.*?)'\],\s*(\w+)\)"
-                pattern2 = r"\(*(\w+),\s\['(.*?)'\]\)"
-
-                match1 = re.search(pattern1, knowledge_ids_str)
-                match2 = re.search(pattern2, knowledge_ids_str)
-
-                if match1:
-                    group1 = match1.group(1).split(", ")
-                    group2 = match1.group(2)
-                    knowledge_ids = [remove_quotes(elem) for elem in group1], group2
-                elif match2:
-                    group1 = match2.group(1)
-                    group2 = [remove_quotes(elem) for elem in match2.group(2).split(", ")]
-                    knowledge_ids = [group1, group2]
-                else:
-                    knowledge_ids = process_knowledge_ids(knowledge_ids_str)
-
-                func_name = next((f for f in ["intersect", "union", "difference", "ifelement", "return"] if f in knowledge_ids_str.lower()), None)
-                
-                if func_name in ["intersect", "union", "difference"]:
-                    result_list = apply_function(knowledge_ids, func_name, knowledge_list)
-                    self.logger.info(f"{func_name.capitalize()} Function performed on: {knowledge_ids} resulting in: {result_list}")
-                    self.thoughts[-1].state["input"] = result_list
-                elif func_name == "ifelement":
-                    self.thoughts[-1].state["input"] = []
-                    if len(knowledge_ids) == 2:
-                        list1, list2 = knowledge_ids
-                        if isinstance(list1, list):
-                            self.thoughts[-1].state["input"].extend([item for item in list1 if item in knowledge_list.get(knowledge_ids[1], [])])
-                        elif isinstance(list2, list):
-                            self.thoughts[-1].state["input"].extend([item for item in list2 if item in knowledge_list.get(knowledge_ids[0], [])])
-                        else:
-                            self.thoughts[-1].state["input"].append(f"{knowledge_ids[0]} is in {knowledge_ids[1]}" if knowledge_ids[0] in knowledge_list.get(knowledge_ids[1], []) else f"{knowledge_ids[0]} is NOT in {knowledge_ids[1]}")
-                    else:
-                        self.thoughts[-1].state["input"].append(f"{knowledge_ids[0]} is NOT in {knowledge_ids[1]}")
-                    self.logger.info(f"IfElement Function performed on: {knowledge_ids} resulting in: {self.thoughts[-1].state['input']}")
-                elif func_name == "return":
-                    self.thoughts[-1].state["input"] = knowledge_list.get(knowledge_ids[0], []) if len(knowledge_ids) == 1 else []
-                    self.logger.info(f"Return Function performed on: {knowledge_ids} resulting in: {self.thoughts[-1].state['input']}")
-                else:
-                    self.logger.warning("Instruction function not recognized", new_state["instruction"]["Function"])
-
-            knowledge_list[f"StepID_{new_state['StepID']}"] = self.thoughts[-1].state["input"]
         if self.thoughts[-1].state["phase"] == "output":
             self.logger.info("Output: %s", self.thoughts[-1].state["input"])
         self.logger.info(

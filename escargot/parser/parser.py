@@ -57,6 +57,13 @@ class ESCARGOTParser:
                             new_state["input"] = new_state["input"][approach]
                         except Exception as e:
                             self.logger.warning(f"Could not convert text to xml: {text}. Encountered exception: {e}")
+                        # new_state["phase"] = "xml_conversion"
+                        new_state["phase"] = "python_conversion"
+                        new_state["generate_successors"] = 1
+                    elif state["phase"] == "python_conversion":
+                        new_state = state.copy()
+                        new_state["input"] = text
+                        self.logger.info(f"Got Python code: {text}")
                         new_state["phase"] = "xml_conversion"
                         new_state["generate_successors"] = 1
                     elif state["phase"] == "xml_conversion":
@@ -65,16 +72,16 @@ class ESCARGOTParser:
                         # new_state["phase"] = "xml_cleanup"
                         # new_state["generate_successors"] = 1
                         new_state["phase"] = "steps"
-                        instructions, edges = parse_xml(text)
+                        instructions, edges = parse_xml(text, self.logger)
                         new_state["instructions"] = instructions
                         new_state["edges"] = edges
-                        self.logger.info("PARSER.parse_generate_answer - Got instructions: \n%s",instructions)
-                        self.logger.info("PARSER.parse_generate_answer - Got edges: \n%s",edges)
+                        self.logger.info("Got instructions: \n%s",instructions)
+                        self.logger.info("Got edges: \n%s",edges)
                     elif state["phase"] == "xml_cleanup":
                         new_state = state.copy()
                         new_state["input"] = text
                         new_state["phase"] = "steps"
-                        instructions, edges = parse_xml(text)
+                        instructions, edges = parse_xml(text, self.logger)
                         new_state["instructions"] = instructions
                         new_state["edges"] = edges
                         self.logger.info(f"Got instructions: {instructions}")
@@ -87,7 +94,7 @@ class ESCARGOTParser:
                         new_state["input"] = text
                 except Exception as e:
                     self.logger.error(
-                        f"PARSER.parse_generate_answer - Could not parse step answer: {text}. Encountered exception: {e}"
+                        f"Could not parse step answer: {text}. Encountered exception: {e}"
                     )
             
         return new_state
