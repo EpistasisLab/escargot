@@ -4,7 +4,18 @@ import re
 import logging
 import numpy as np
 from escargot.prompter import ESCARGOTPrompter
+import ast
 
+def determine_and_execute(code_snippet, namespace={}):
+    try:
+        # Try to parse as an expression
+        ast.parse(code_snippet, mode='eval')
+        # If successful, it's an expression
+        return eval(code_snippet, globals(), namespace), 'eval'
+    except SyntaxError:
+        # If there's a syntax error, try to parse as statements
+        exec(code_snippet, globals(), namespace)
+        return None, 'exec'
 
 class Coder:
     """
@@ -42,7 +53,7 @@ class Coder:
             try:
                 #detect long spaces within the code and remove them, but keep \n
                 code = code.replace('            ','')
-                exec(code, globals(), self.local_context)
+                result, expression_type = determine_and_execute(code, self.local_context)
                 compiled = True
             except Exception as e:
                 logger.warning(f"Could not execute code: {code}. Encountered exception: {e}")
@@ -55,7 +66,11 @@ class Coder:
                 tries -= 1
         if compiled:
             #check for diff between local_context and backup_local_context
-            diff = {k: self.local_context[k] for k in set(self.local_context) - set(backup_local_context)}
-            self.step_output[step_id] = diff
+            if expression_type == 'eval':
+                self.step_output[step_id] = result
+            else:
+                diff = {k: self.local_context[k] for k in set(self.local_context) - set(backup_local_context)}
+                self.step_output[step_id] = diff
+
         return code,compiled
     

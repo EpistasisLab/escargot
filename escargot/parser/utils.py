@@ -73,6 +73,7 @@ def parse_xml(xml_data, logger):
     xml_data = re.sub(r"<Root>", "", xml_data)
     #find </Root> and remove it
     xml_data = re.sub(r"</Root>", "", xml_data)
+    xml_data = xml_data.replace("&", "&amp;")
     try:
         xml_data = '<Root>' + xml_data + '</Root>'
         root = ET.fromstring(xml_data)
@@ -90,7 +91,11 @@ def parse_xml(xml_data, logger):
         # Initialize empty lists to store information
         codes = []
         for info in step.findall('Code'):
-            codes.append(info.text.strip())
+            code_text = info.text.strip()
+            if code_text:
+                #unescape the code
+                code_text = code_text.replace("&amp;", "&")
+            codes.append(code_text)
 
         # Return a list with relevant information (adjust as needed)
         return {

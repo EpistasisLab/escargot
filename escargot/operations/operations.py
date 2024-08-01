@@ -355,7 +355,7 @@ class Generate(Operation):
 
         if self.thoughts[-1].state["phase"] == "output":
             self.logger.info("Output: %s", self.thoughts[-1].state["input"])
-        self.logger.info(
+        self.logger.debug(
             "Generate operation %d created %d new thoughts", self.id, len(self.thoughts)
         )
 
