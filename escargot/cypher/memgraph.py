@@ -20,7 +20,7 @@ class MemgraphClient:
             self.host = self.config["host"]
             self.port = self.config["port"]
             self.memgraph = Memgraph(host=self.host, port=self.port)
-            self.num_responses = 3
+            self.num_responses = 5
             self.cache = {}
             self.schema = None
 
@@ -91,52 +91,51 @@ class MemgraphClient:
 
     def execute(self, lm, query, statement):
         if statement in self.cache:
-            results = self.cache[statement]
+            results = self.cache[statement][1]
         else:
             num_responses = self.num_responses
             response = ''
-            if num_responses == 1:
-                response = self.chat([{"role": "system", "content": query}], num_responses)
-            else:
-                responses_hash = set()
-                memgraph_results = []
-                iter = 0
-                while memgraph_results == [] and iter < 3:
+            responses_hash = set()
+            memgraph_results = []
+            iter = 0
+            responses = lm.get_response_texts(
+                lm.query(query, num_responses=num_responses)
+            )
+            empty_responses = True
+            while iter < num_responses and empty_responses:
+                try:
+                    response = responses[iter]
                     iter += 1
-                    try:
-                        response = lm.get_response_texts(
-                                    lm.query(query, num_responses=1)
-                                )
+                    # Check if the response is in the hash set
+                    if response in responses_hash:
+                        continue
+                    responses_hash.add(response)
+                    # Remove "Answer:" from the response
+                    if response.startswith("Answer:"):
+                        response= response[8:].strip()
+                    
+                    if response == "" or response == None:
+                        continue
+                    #remove ```cypher from the response
+                    response = response.replace("```cypher", "")
 
-                        response = response[0]
-                        # Check if the response is in the hash set
-                        if response in responses_hash:
-                            continue
-                        responses_hash.add(response)
-                        # Remove "Answer:" from the response
-                        if response.startswith("Answer:"):
-                            response= response[8:].strip()
-                        
-                        if response == "" or response == None:
-                            continue
-                        #remove ```cypher from the response
-                        response = response.replace("```cypher", "")
+                    #remove ``` from anywhere in the response
+                    response = response.replace("```", "")
 
-                        #remove ``` from anywhere in the response
-                        response = response.replace("```", "")
+                    #remove \n from the response
+                    response = response.replace("\n", " ")
 
-                        #remove \n from the response
-                        response = response.replace("\n", "")
-
-                        #TODO: tweak if necessary. Get rid of directionality in the response
-                        response = response.replace("<-", "-")
-                        response = response.replace("->", "-")
-                        
-                        self.logger.info(f"Executing memgraph for statement: {statement}, response: {response}")
-                        memgraph_results = self.memgraph.execute_and_fetch(response)
-                        memgraph_results = list(memgraph_results)
-                    except Exception as e:
-                        self.logger.error(f"Error in memgraph: {e}, trying again {iter}")
+                    #TODO: tweak if necessary. Get rid of directionality in the response
+                    response = response.replace("<-", "-")
+                    response = response.replace("->", "-")
+                    
+                    self.logger.info(f"Executing memgraph for statement: {statement}, response: {response}")
+                    memgraph_results = self.memgraph.execute_and_fetch(response)
+                    memgraph_results = list(memgraph_results)
+                    if memgraph_results != []:
+                        empty_responses = False
+                except Exception as e:
+                    self.logger.error(f"Error in memgraph: {e}, trying again {iter}")
             self.logger.info(f"Memgraph results: {memgraph_results}")
             results = []
             # get the value in the dictionary x in memgraph_results

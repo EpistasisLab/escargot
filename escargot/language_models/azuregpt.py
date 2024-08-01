@@ -75,27 +75,9 @@ class AzureGPT(AbstractLanguageModel):
         if self.cache and query in self.response_cache:
             return self.response_cache[query]
 
-        if num_responses == 1:
-            response = self.chat([{"role": "system", "content": query}], num_responses)
-        else:
-            response = []
-            next_try = num_responses
-            total_num_attempts = num_responses
-            while num_responses > 0 and total_num_attempts > 0:
-                try:
-                    assert next_try > 0
-                    res = self.chat([{"role": "user", "content": query}], next_try)
-                    response.append(res)
-                    num_responses -= next_try
-                    next_try = min(num_responses, next_try)
-                except Exception as e:
-                    next_try = (next_try + 1) // 2
-                    self.logger.warning(
-                        f"Error in chatgpt: {e}, trying again with {next_try} samples"
-                    )
-                    time.sleep(random.randint(1, 3))
-                    total_num_attempts -= 1
-
+        response = []
+        response = self.chat([{"role": "system", "content": query}], num_responses)
+        
         if self.cache:
             self.response_cache[query] = response
         return response
@@ -118,9 +100,9 @@ class AzureGPT(AbstractLanguageModel):
         response = self.client.chat.completions.create(
             model=self.model_id,
             messages=messages,
-            # temperature=self.temperature,
-            # max_tokens=self.max_tokens,
-            # n=num_responses,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            n=num_responses,
             # stop=self.stop,
         )
 

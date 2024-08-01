@@ -61,7 +61,7 @@ def strip_answer_helper_all(text: str, tag: str = "") -> str:
     # print(end)
     return [text[text.index(f"<{tag}>", start[i]) + len(f"<{tag}>") : end[i]].strip() for i in range(len(start))]
 
-def parse_xml(xml_data):
+def parse_xml(xml_data, logger):
     # Parse the XML string
     #find <?xml version="1.0" encoding="UTF-8"?> and remove it
     xml_data = re.sub(r"<\?xml version=\"1.0\" encoding=\"UTF-8\"\?>", "", xml_data)
@@ -73,11 +73,13 @@ def parse_xml(xml_data):
     xml_data = re.sub(r"<Root>", "", xml_data)
     #find </Root> and remove it
     xml_data = re.sub(r"</Root>", "", xml_data)
+    xml_data = xml_data.replace("&", "&amp;")
     try:
         xml_data = '<Root>' + xml_data + '</Root>'
         root = ET.fromstring(xml_data)
     except Exception as e:
-        logging.error(f"Could not parse XML data: {xml_data}. Encountered exception: {e}")
+        logger.error(f"Could not parse XML data: {xml_data}. Encountered exception: {e}")
+        return None, None
 
     def get_step(step):
         step_id = step.find('StepID').text
@@ -85,46 +87,21 @@ def parse_xml(xml_data):
 
         if step is None:
             return None  # Handle cases where there's no instruction element
-
+        
         # Initialize empty lists to store information
-        knowledge_requests = []
-        for_info = None
-        function = []
-
-        # Check for KnowledgeRequest elements (can be multiple)
-        for knowledge_request in step.findall('KnowledgeRequest'):
-            knowledge_id = knowledge_request.find('KnowledgeID').text if knowledge_request.find('KnowledgeID') is not None else None
-            node = knowledge_request.find('Query').text if knowledge_request.find('Query') is not None else None
-            knowledge_requests.append({
-                "KnowledgeID": knowledge_id,
-                "Query": node
-            })
-
-        # Check for For element
-        if step.find('For') is not None:
-            for_var = step.find('For/ForVariable').text
-            for_node = step.find('For/ForFunction/KnowledgeRequest/Node').text
-            for_info = {
-                "ForVariable": for_var,
-                "ForNode": for_node
-            }
-
-        # Check for Function element
-        # if step.find('Function') is not None:
-        #     function = step.find('Function').text.strip()
-
-        for function_element in step.findall('Function'):
-            function.append(function_element.text.strip())
-
+        codes = []
+        for info in step.findall('Code'):
+            code_text = info.text.strip()
+            if code_text:
+                #unescape the code
+                code_text = code_text.replace("&amp;", "&")
+            codes.append(code_text)
 
         # Return a list with relevant information (adjust as needed)
         return {
             "StepID": step_id,
-            "InstructionType": "KnowledgeRequest" if knowledge_requests else "For" if for_info else "Function" if function else None,
             "Instruction": instruction.text.strip() if instruction.text else "",
-            "KnowledgeRequests": knowledge_requests if knowledge_requests else None,
-            # "For": for_info,
-            "Function": function if function else None
+            "Code": codes
         }
 
     # print('xml_data:',xml_data.split("\n"))
