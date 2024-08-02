@@ -349,7 +349,6 @@ class Generate(Operation):
                         state={**self.thoughts[-1].state, "phase": "output"}
                     )]
                     got_steps[str(last_step)].successors[-1].thoughts[-1].state["input"] = ""
-                    self.logger.info("GoT Steps From XML: %s", got_steps)
                     
             index += 1
 

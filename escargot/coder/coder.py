@@ -7,15 +7,19 @@ from escargot.prompter import ESCARGOTPrompter
 import ast
 
 def determine_and_execute(code_snippet, namespace={}):
+    local_context = {}
+    #detect if there is a print statement in the code
+    if 'print' in code_snippet:
+        code_snippet = code_snippet.replace('print','')
     try:
         # Try to parse as an expression
         ast.parse(code_snippet, mode='eval')
         # If successful, it's an expression
-        return eval(code_snippet, globals(), namespace), 'eval'
+        return eval(code_snippet, namespace, local_context), 'eval', local_context
     except SyntaxError:
         # If there's a syntax error, try to parse as statements
-        exec(code_snippet, globals(), namespace)
-        return None, 'exec'
+        exec(code_snippet, namespace, local_context)
+        return None, 'exec', local_context
 
 class Coder:
     """
@@ -53,7 +57,7 @@ class Coder:
             try:
                 #detect long spaces within the code and remove them, but keep \n
                 code = code.replace('            ','')
-                result, expression_type = determine_and_execute(code, self.local_context)
+                result, expression_type, local_context = determine_and_execute(code, self.local_context)
                 compiled = True
             except Exception as e:
                 logger.warning(f"Could not execute code: {code}. Encountered exception: {e}")
@@ -69,8 +73,9 @@ class Coder:
             if expression_type == 'eval':
                 self.step_output[step_id] = result
             else:
-                diff = {k: self.local_context[k] for k in set(self.local_context) - set(backup_local_context)}
-                self.step_output[step_id] = diff
+                self.step_output[step_id] = local_context
+                self.local_context = self.local_context | local_context
+        logger.info(f"Step output: {self.step_output}")
 
         return code,compiled
     

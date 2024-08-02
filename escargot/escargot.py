@@ -50,7 +50,19 @@ class Escargot:
     #1: output, instructions, and exceptions
     #2: output, instructions, exceptions, and debug info
     #3: output, instructions, exceptions, debug info, and LLM output
-    def ask(self,question,num_strategies=3,debug_level = 0):
+    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0):
+        """
+        Ask a question and get an answer.
+
+        :param question: The question to ask.
+        :type question: str
+        :param answer_type: The type of answer to expect. Defaults to 'natural'. Options are 'natural', 'array'.
+        :type answer_type: str
+        :param num_strategies: The number of strategies to generate. Defaults to 3.
+        :type num_strategies: int
+        :return: The answer to the question.
+        :rtype: str
+        """
         log_stream = io.StringIO()
         f_handler = logging.StreamHandler(log_stream)
         c_handler = logging.StreamHandler()
@@ -116,5 +128,11 @@ class Escargot:
         self.operations_graph = self.controller.graph.operations
         output = ""
         if self.controller.final_thought is not None:
-            output = self.controller.final_thought.state['input']
+            if answer_type == 'natural':
+                output = self.controller.final_thought.state['input']
+            elif answer_type == 'array':
+                # output = list(list(self.controller.coder.step_output.values())[-1].values())[-1]
+                output = list(self.controller.coder.step_output.values())[-1]
+
+
         return output
