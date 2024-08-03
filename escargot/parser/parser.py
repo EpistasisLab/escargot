@@ -59,13 +59,30 @@ class ESCARGOTParser:
                             self.logger.warning(f"Could not convert text to xml: {text}. Encountered exception: {e}")
                         # new_state["phase"] = "xml_conversion"
                         new_state["phase"] = "python_conversion"
+                        new_state["num_branches_response"] = 3
+                        new_state["full_plan"] = new_state["input"]
                         new_state["generate_successors"] = 1
                     elif state["phase"] == "python_conversion":
                         new_state = state.copy()
                         new_state["input"] = text
-                        self.logger.info(f"Got Python code: {text}")
+                        self.logger.debug(f"Got Python code: {text}")
+                        new_state["phase"] = "code_assessment"
+                        new_state["generate_successors"] = 1
+                    elif state["phase"] == "code_assessment":
+                        new_state = state.copy()
+                        try:
+                            text = strip_answer_helper_all(text, "Code")
+                            # get the highest score and the approach
+                            approach = max(text, key=lambda x: int(strip_answer_helper(x,"Score")))
+                            approach = strip_answer_helper(approach, "CodeID")
+                            approach = int(approach)-1
+                            new_state["input"] = new_state["input"][approach]
+                        except Exception as e:
+                            self.logger.warning(f"Could not convert text to xml: {text}. Encountered exception: {e}")
+                        self.logger.info("Got Python code: %s", new_state["input"])
                         new_state["phase"] = "xml_conversion"
                         new_state["generate_successors"] = 1
+                        
                     elif state["phase"] == "xml_conversion":
                         new_state = state.copy()
                         new_state["input"] = text

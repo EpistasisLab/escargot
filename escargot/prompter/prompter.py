@@ -46,6 +46,27 @@ Let's think step by step, and be very succinct, clear, and efficient in the numb
 
     plan_assessment_prompt = """You are a brilliant strategic thinker with access to a biomedical knowledge graph. You will receive a query that will require the knowledge graph to answer and a few approaches that will try to resolve that query. 
 
+If knowledge needs to be pulled from the knowledge graph, they will try to provide what specific relationships or node information is necessary.
+The score should reflect on how clear and efficient each step is. It is not about how many steps are taken, but the quality of the steps. The highest score approach would be specific on what knowledge to extract, especially if it includes specific nodes. For instance, an approach with step 'Find the body parts or anatomy that over-express METTL5. (BODYPART OVEREXPRESSES GENE)' scores very high since it is specific on the node METTL5 and performs a 1 hop knowledge request.
+An approach where there are steps that contain a specific node with a relationship scores higher than an approach where there any steps that contain only arbitrary node types such as when a step that is a generic node type like 'Determine the relationship between genes and body parts that represents over-expression'
+Do not allow steps that simply ask for a generic node, such as "List all drugs" or "Find all diseases". These steps should be be penalized in the score.
+If the question is a multiple choice question, the approaches that include the specific multiple choice options in at least one of the steps will score higher.
+
+The knowledge graph contains node types: {node_types}.
+The knowledge graph contains relationships: {relationship_types}.
+
+Return an XML formatted list with all the approaches in Approach tags. Each approach should be within <Approach> tags and will have an incremental <ApproachID> value within it. The score should be an integer between 1-10 within <Score> tags.
+An example is as follows:
+<Approaches>
+  <Approach>
+    <ApproachID>1</ApproachID>
+    <Score>...</Score>
+  </Approach>
+  ...
+</Approaches>
+
+Only return the XML.
+
 Here is your question:
 {question}
 
@@ -57,35 +78,54 @@ Here is ApproachNumber 2:
 
 Here is ApproachNumber 3:
 "{approach_3}"
-
-If knowledge needs to be pulled from the knowledge graph, they will try to provide what specific relationships or node information is necessary.
-The score should reflect on how clear and efficient each step is. It is not about how many steps are taken, but the quality of the steps. The highest score approach would be specific on what knowledge to extract, especially if it includes specific nodes. For instance, an approach with step 'Find the body parts or anatomy that over-express METTL5. (BODYPART OVEREXPRESSES GENE)' scores very high since it is specific on the node METTL5 and performs a 1 hop knowledge request.
-An approach where there are steps that contain a specific node with a relationship scores higher than an approach where there any steps that contain only arbitrary node types such as when a step that is a generic node type like 'Determine the relationship between genes and body parts that represents over-expression'
-Do not allow steps that simply ask for a generic node, such as "List all drugs" or "Find all diseases". These steps should be be penalized in the score.
-If the question is a multiple choice question, the approaches that include the specific multiple choice options in at least one of the steps will score higher.
-
-The knowledge graph contains node types: {node_types}.
-The knowledge graph contains relationships: {relationship_types}.
-
-Return a XML formatted list with all the approaches in Approach tags. Each approach should be within <Approach> tags and will have an incremental <ApproachID> value within it. The score should be an integer between 1-10 within <Score> tags.
-An example is as follows:
-<Approaches>
-  <Approach>
-    <ApproachID>1</ApproachID>
-    <Score>...</Score>
-  </Approach>
-  ...
-</Approaches>
-
-Only return the XML.
 """
 
     python_conversion_prompt = """You will be given a set of instructions and you must convert the instructions into Python code with the following rules:
+1. Provide Python code for each step, and put the instructions for that step in comments before the code for that step. 
+2. Do not define new functions. Only use default Python packages and numpy. 
+3.  Do not include print statements. 
+4. If the code within a step requires a request from the knowledge graph, you must use the knowledge_extract(x) function where there is only one variable in x, which is the specific knowledge you are requesting. This function will return a list. For instance, if you need to find the genes over-expressed in the brain, you would use knowledge_extract("GENE OVEREXPRESSED IN BODYPART-Brain").
 
-{instructions}
+Instructions:
+{instructions}"""
 
-Provide Python code for each step, and put the instructions for that step in comments before the code for that step. Do not define new functions. Only use default Python packages and numpy. Do not include print statements. If the code within a step requires a request from the knowledge graph, you must use the knowledge_extract(x) function where there is only one variable in x, which is the specific knowledge you are requesting. This function will return a list. For instance, if you need to find the genes over-expressed in the brain, you would use knowledge_extract("GENE OVEREXPRESSED IN BODYPART-Brain")."""
+    python_assessment_prompt = """You are a Python expert who will assess the Python code generated from the instructions. You will receive a question that requires a knowledge graph to answer and three approaches that will try to resolve that question. You will assess the quality of the Python code generated from the approaches.
+You will assess the Python code based on the following criteria:
+1. The code should be clear and concise.
+2. The code should follow the instructions provided.
+3. The code should not define any new functions.
+4. The code should only use default Python packages and numpy.
+5. The code should not contain placeholder variables, such as ['gene1', 'gene2', 'gene3']. Instead, the code should contain the actual variables from the instructions.
+6. The code should have comments for each step that describe the instructions for that step.
+7. Any code that requires the knowledge graph should use the knowledge_extract(x) function, where x is the specific knowledge you are requesting.
 
+Return an XML formatted list with all the code snippets in Code tags. Each code snippet should be within <Code> tags and will have an incremental <CodeID> value within it. The score should be an integer between 1-10 within <Score> tags.
+An example is as follows:
+<Codes>
+  <Code>
+    <CodeID>1</CodeID>
+    <Score>...</Score>
+  </Code>
+  ...
+</Codes>
+
+Only return the XML.
+
+Here is the problem:
+{question}
+Here is your instructions:
+{approach}
+
+Here is code snippet 1:
+{approach_1}
+
+Here is code snippet 2:
+{approach_2}
+
+Here is code snippet 3:
+{approach_3}
+"""
+    
     xml_conversion_prompt = """You will be given instructions and python code for each step. The instructions assume you have connection to a knowledge graph. The must convert it into XML with the following rules:
 Format your response in XML format, where the steps will be within <Instructions> tags. Each step will be within <Step> tags and will have an incremental <StepID> value within it. The full description of the step will be put in the <Instruction> tags within the <Step>. Following the <Instruction>, you must put in the code corresponding to the step within <Code> tags.
 If the code within a step requires a request from the knowledge graph, you must use the knowledge_extract(x) function where x is the specific keyword you are requesting. For instance, if you need to find the genes over-expressed in the brain, you would use knowledge_extract("GENE OVEREXPRESSED IN BODYPART-Brain"). The code will likely have placeholders for the knowledge request that you must fill in, such as ['gene1', 'gene2', 'gene3'].
@@ -300,6 +340,8 @@ Question:
                 return self.plan_assessment_prompt.format(question=question, approach_1=input[0], approach_2=input[1], approach_3=input[2], node_types=self.node_types, relationship_types=self.relationship_types)
             elif kwargs["phase"] == "python_conversion":
                 return self.python_conversion_prompt.format(instructions=input)
+            elif kwargs["phase"] == "code_assessment":
+                return self.python_assessment_prompt.format(question=question, approach=kwargs["full_plan"], approach_1=input[0], approach_2=input[1], approach_3=input[2])
             elif kwargs["phase"] == "xml_conversion":
                 return self.xml_conversion_prompt.format(instructions=input)
             elif kwargs["phase"] == "xml_cleanup":

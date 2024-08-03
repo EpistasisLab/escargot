@@ -203,20 +203,24 @@ class Generate(Operation):
                 return prompt, []
             self.logger.debug("Prompt for LM: %s", prompt)
             
-            for i in range(self.num_branches_response):
-                tries = 0
-                while tries < 3:
-                    try:
-                        response =lm.get_response_texts(
-                            lm.query(prompt, num_responses=1)
-                        )
+            tries = 0
+            while tries < 3:
+                try:
+                    new_states = []
+                    responses = []
+                    lm_responses =lm.get_response_texts(
+                        lm.query(prompt, num_responses=self.num_branches_response)
+                    )
+                    for response in lm_responses:
+                        responses.append(response)
                         new_state = parser.parse_generate_answer(base_state, response)
-                        break
-                    except Exception as e:
-                        self.logger.warning("Error in LM: %s, trying again with prompt: %s", e, prompt)
-                        tries += 1
-                responses.append(response)
-                new_states.append(new_state)
+                        new_states.append(new_state)
+                        self.logger.debug("Response from LM: %s", response)
+                    break
+                except Exception as e:
+                    self.logger.warning("Error in LM: %s, trying again with prompt: %s", e, prompt)
+                    tries += 1
+            
         
         return prompts, responses, new_states
 
@@ -286,7 +290,7 @@ class Generate(Operation):
                 else:
                     new_state = {**base_state, **new_state, "prompt": prompts}
                 if len(self.thoughts) > 0:
-                    if self.thoughts[-1].state["phase"] == "plan_assessment":
+                    if self.thoughts[-1].state["phase"] == "plan_assessment" or self.thoughts[-1].state["phase"] == "code_assessment":
                         if type(self.thoughts[-1].state["input"]) == str:
                             self.thoughts[-1].state["input"] = [self.thoughts[-1].state["input"]]
                         self.thoughts[-1].state["input"].append(new_state["input"])

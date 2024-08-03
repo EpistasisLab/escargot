@@ -99,9 +99,12 @@ class Controller:
         assert self.graph.roots is not None, "The operations graph has no root"
 
         self.initialize_execution_queue()
-
+        # ray or dask
         while self.execution_queue:
-            self.execute_step()
+            # if len(self.execution_queue) > 1:
+            #     #run parallel operations
+            # else:
+                self.execute_step()
 
         self.logger.info("All operations executed")
         self.run_executed = True
