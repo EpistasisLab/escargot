@@ -220,6 +220,22 @@ class Generate(Operation):
                 except Exception as e:
                     self.logger.warning("Error in LM: %s, trying again with prompt: %s", e, prompt)
                     tries += 1
+
+        if new_states != [] and "select_highest_score" in new_states[0]:
+            #empty list of length len(new_states)
+            scores = [new_state["scores"] for new_state in new_states]
+            #element wise sum of the scores
+            sum_scores = [sum(elem) for elem in zip(*scores)]
+            #get the index of the highest score
+            highest_score_index = sum_scores.index(max(sum_scores))
+            responses = [sum_scores]
+            new_states = [new_states[0]]
+            new_states[0]["input"] = base_state["input"][highest_score_index]
+            new_states[0]["scores"] = sum_scores
+            if new_states[0]["phase"] == "python_conversion":
+                new_states[0]["full_plan"] = new_states[0]["input"]
+                self.logger.warning("Strategy:\n%s", new_states[0]["input"])
+            new_states[0].pop("select_highest_score")
             
         
         return prompts, responses, new_states

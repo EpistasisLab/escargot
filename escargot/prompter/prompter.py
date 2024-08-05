@@ -50,6 +50,7 @@ If knowledge needs to be pulled from the knowledge graph, they will try to provi
 The score should reflect on how clear and efficient each step is. It is not about how many steps are taken, but the quality of the steps. The highest score approach would be specific on what knowledge to extract, especially if it includes specific nodes. For instance, an approach with step 'Find the body parts or anatomy that over-express METTL5. (BODYPART OVEREXPRESSES GENE)' scores very high since it is specific on the node METTL5 and performs a 1 hop knowledge request.
 An approach where there are steps that contain a specific node with a relationship scores higher than an approach where there any steps that contain only arbitrary node types such as when a step that is a generic node type like 'Determine the relationship between genes and body parts that represents over-expression'
 Do not allow steps that simply ask for a generic node, such as "List all drugs" or "Find all diseases". These steps should be be penalized in the score.
+Approaches that do not include a final step that answers the question will score lower.
 If the question is a multiple choice question, the approaches that include the specific multiple choice options in at least one of the steps will score higher.
 
 The knowledge graph contains node types: {node_types}.
@@ -186,25 +187,32 @@ The knowledge graph contains the following generic node types: {node_types}.
 The knowledge graph contains the following relationships: {relationship_types}.
 
 Examples:
+Instruction: Identify the gene METTL5
 Request: METTL5
 Answer: !METTL5!
 
+Instruction: Identify the drugs that treats Alzheimer's Disease
 Request: Alzheimer's Disease-DRUG TREATS DISEASE-Drug
 Answer: !Alzheimer's Disease!-DRUG TREATS DISEASE-Drug
 
+Instruction: Find the genes that interact with the gene MCM4.
 Request: GENE-GENE INTERACTS WITH GENE-MCM4
 Answer: Gene-GENE INTERACTS WITH GENE-!MCM4!
 
+Instruction: Identify Genes Under-Expressed in Brain. Return the genes in a list.
 Request: GENE-BODYPART UNDER EXPRESSES GENE-Brain
 Answer: Gene-BODYPART UNDER EXPRESSES GENE-!brain!
 
+Instruction: Return the genes that are subject to decreased expression by the drug Yohimbine.
 Request: Drug-CHEMICALDECREASESEXPRESSION-Gene
 Answer: !Yohimbine!-CHEMICALDECREASESEXPRESSION-Gene
 
+Instruction: Determine the gene symbol for "cytochrome c oxidase assembly factor 7"
 Request: Datatype-GENE-NAME-cytochrome c oxidase assembly factor 7
 Answer: Gene-!cytochrome c oxidase assembly factor 7!
 
 Here is the instruction you must convert:
+Instruction: {instruction}
 Request: {statement_to_embed}
 
 Return only the answer."""
@@ -274,6 +282,12 @@ Memgraph request: MATCH (g:Gene) WHERE toLower(g.commonName) = toLower("cytochro
 """
     memgraph_prompt_3 = """Instruction: {instruction}
 Do not get confused with the above examples and return only the Cypher query for the following question: {cypher}"""
+
+    clean_up_vector_db_prompt = """Use the following information only:
+{knowledge}
+
+Answer the question: {instruction}
+Return only the answer in an array of values. Example: "[A,B,...]"""
 
     debug_code_prompt = """You will be given a Python code snippet that failed to execute. You must debug the code snippet and provide the corrected code snippet.
 The instruction is as follows:
@@ -384,6 +398,11 @@ Question:
             self.logger.info(f"Cypher knowledge for {statement_to_embed}: {str(knowledge_array)}")
             #backup if the memgraph client fails or doesn't provide any knowledge
             if knowledge_array == [] and self.vector_db is not None:
+                statement_to_embeds = self.lm.get_response_texts(
+                    self.lm.query(self.knowledge_request_adjustment_prompt.format(node_types=self.node_types,relationship_types=self.relationship_types, statement_to_embed=statement_to_embed, instruction=instruction), num_responses=3)
+                )
+                #get the most common element in the list
+                statement_to_embed = max(set(statement_to_embeds), key = statement_to_embeds.count)
                 if statement_to_embed.count("!") >= 2:
                     #if there is only once specific node and nothing else, then return the knowledge
                     embedded_question = self.lm.get_embedding(statement_to_embed_cleaned)
@@ -399,6 +418,20 @@ Question:
                 else:
                     embedded_question = self.lm.get_embedding(statement_to_embed)
                     knowledge_array,distances = self.vector_db.get_knowledge(embedded_question)
+                tries = 0
+                while tries < 3:
+                    tries += 1
+                    try:
+                        knowledge_array = self.lm.get_response_texts(
+                            self.lm.query(self.clean_up_vector_db_prompt.format(knowledge="\n".join(knowledge_array), instruction=instruction), num_responses=1)
+                        )
+                        knowledge_array = knowledge_array[0]
+                        knowledge_array = eval(knowledge_array)
+                        break
+                    except Exception as e:
+                        self.logger.error(f"Error in vector db: {e}, trying again {tries}")
+                
+
                 self.logger.info(f"Vector DB knowledge for {statement_to_embed}: {knowledge_array}")
             return knowledge_array
         return "knowledge"

@@ -134,5 +134,5 @@ class Escargot:
                 # output = list(list(self.controller.coder.step_output.values())[-1].values())[-1]
                 output = list(self.controller.coder.step_output.values())[-1]
 
-
+        self.logger.warning(f"Output: {output}")
         return output

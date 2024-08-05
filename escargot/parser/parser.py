@@ -44,23 +44,24 @@ class ESCARGOTParser:
                         new_state = state.copy()
                         new_state["input"] = text
                         new_state["phase"] = "plan_assessment"
+                        new_state["num_branches_response"] = 3
                         new_state["generate_successors"] = 1
                     elif state["phase"] == "plan_assessment":
                         new_state = state.copy()
                         #convert text to json and select from the input the top strategy
+                        scores = []
                         try:
                             text = strip_answer_helper_all(text, "Approach")
-                            # get the highest score and the approach
-                            approach = max(text, key=lambda x: int(strip_answer_helper(x,"Score")))
-                            approach = strip_answer_helper(approach, "ApproachID")
-                            approach = int(approach)-1
-                            new_state["input"] = new_state["input"][approach]
+                            #get all the scores
+                            for i in text:
+                                scores.append(int(strip_answer_helper(i,"Score")))
+                            new_state["scores"] = scores
                         except Exception as e:
                             self.logger.warning(f"Could not convert text to xml: {text}. Encountered exception: {e}")
                         # new_state["phase"] = "xml_conversion"
                         new_state["phase"] = "python_conversion"
                         new_state["num_branches_response"] = 3
-                        new_state["full_plan"] = new_state["input"]
+                        new_state["select_highest_score"] = 1
                         new_state["generate_successors"] = 1
                     elif state["phase"] == "python_conversion":
                         new_state = state.copy()
@@ -70,17 +71,21 @@ class ESCARGOTParser:
                         new_state["generate_successors"] = 1
                     elif state["phase"] == "code_assessment":
                         new_state = state.copy()
+                        scores = []
                         try:
                             text = strip_answer_helper_all(text, "Code")
+                            for i in text:
+                                scores.append(int(strip_answer_helper(i,"Score")))
+                            new_state["scores"] = scores
                             # get the highest score and the approach
-                            approach = max(text, key=lambda x: int(strip_answer_helper(x,"Score")))
-                            approach = strip_answer_helper(approach, "CodeID")
-                            approach = int(approach)-1
-                            new_state["input"] = new_state["input"][approach]
+                            # approach = max(text, key=lambda x: int(strip_answer_helper(x,"Score")))
+                            # approach = strip_answer_helper(approach, "CodeID")
+                            # approach = int(approach)-1
+                            # new_state["input"] = new_state["input"][approach]
                         except Exception as e:
                             self.logger.warning(f"Could not convert text to xml: {text}. Encountered exception: {e}")
-                        self.logger.info("Got Python code: %s", new_state["input"])
                         new_state["phase"] = "xml_conversion"
+                        new_state["select_highest_score"] = 1
                         new_state["generate_successors"] = 1
                         
                     elif state["phase"] == "xml_conversion":
