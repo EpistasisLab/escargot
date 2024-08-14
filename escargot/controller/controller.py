@@ -33,12 +33,14 @@ class Controller:
         self.graph = graph
         self.prompter = prompter
         self.parser = parser
+        self.original_problem_parameters = problem_parameters
         self.problem_parameters = problem_parameters
         self.run_executed = False
         self.got_steps = {}
         self.final_thought = None
         self.execution_queue = []
-        self.max_tries = 3
+        self.max_run_tries = 3
+        self.max_operation_tries = 2
         self.coder = Coder()
 
     def initialize_execution_queue(self) -> None:
@@ -66,7 +68,7 @@ class Controller:
         current_operation_backup = copy.copy(current_operation)
         
         tries = 0
-        while tries < self.max_tries:
+        while tries < self.max_operation_tries:
             try:
                 current_operation.execute(
                     self.lm, self.prompter, self.parser, self.got_steps, self.logger, self.coder, **self.problem_parameters
@@ -79,9 +81,9 @@ class Controller:
 
         del current_operation_backup
 
-        if tries == self.max_tries:
+        if tries == self.max_operation_tries:
             self.logger.error("Max tries reached on executing operation %s", current_operation.operation_type)
-            raise
+            return None
         
         for operation in current_operation.successors:
             if operation.can_be_executed():
@@ -97,17 +99,24 @@ class Controller:
         Ensures the program is in a valid state before execution.
         """
         assert self.graph.roots is not None, "The operations graph has no root"
-
-        self.initialize_execution_queue()
-        # ray or dask
-        while self.execution_queue:
-            # if len(self.execution_queue) > 1:
-            #     #run parallel operations
-            # else:
+        
+        while not self.run_executed and self.max_run_tries > 0:
+            self.max_run_tries -= 1
+            self.execution_queue = []
+            self.got_steps = {}
+            self.problem_parameters = copy.copy(self.original_problem_parameters)
+            self.initialize_execution_queue()
+            
+            while self.execution_queue:
                 self.execute_step()
 
-        self.logger.info("All operations executed")
-        self.run_executed = True
+            if self.final_thought.state["phase"] == "output":
+                self.logger.info("All operations executed")
+                self.run_executed = True
+
+        if self.max_run_tries == 0:
+            self.logger.error("Max tries reached on executing controller")
+
 
     def get_final_thoughts(self) -> List[List[Thought]]:
         """

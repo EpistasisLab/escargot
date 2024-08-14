@@ -185,11 +185,12 @@ class Generate(Operation):
             temp_state["phase"] = "output"
             temp_state['input'] = self.coder.step_output
             prompts.append(prompter.generate_prompt( **temp_state))
-            self.logger.warning("Prompt for LM: \n%s", prompts[-1])
+            self.logger.debug("Prompt for LM: \n%s", prompts[-1])
         elif "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Code"] is not None:
             code = base_state["instruction"]["Code"][0]
             new_code, compiled = self.coder.execute_code(code, base_state["instruction"]["Instruction"], base_state["StepID"], prompter, self.logger)
             new_state  = {**base_state, "input": new_code, "compiled": compiled}
+            new_state["instructions"][int(base_state["StepID"])-1]['Code'] = [new_code]
             new_states.append(new_state)
             self.logger.info("Code: %s", new_code)
             self.logger.info("Compiled: %s", compiled)
@@ -342,6 +343,9 @@ class Generate(Operation):
                             edge = [elem.replace("StepID_", "") for elem in edge]
                             edge = [elem.replace("StepID", "") for elem in edge]
 
+                            #sort the edge
+                            edge.sort()
+
                             if edge[0] not in got_steps:
                                 got_steps[edge[0]] = Generate(1, 1)
                                 got_steps[edge[0]].thoughts = [Thought(
@@ -369,6 +373,7 @@ class Generate(Operation):
                         state={**self.thoughts[-1].state, "phase": "output"}
                     )]
                     got_steps[str(last_step)].successors[-1].thoughts[-1].state["input"] = ""
+                    new_state.pop("edges")
                     
             index += 1
 

@@ -20,7 +20,7 @@ class MemgraphClient:
             self.host = self.config["host"]
             self.port = self.config["port"]
             self.memgraph = Memgraph(host=self.host, port=self.port)
-            self.num_responses = 5
+            self.num_responses = 7
             self.cache = {}
             self.schema = None
 
@@ -90,9 +90,9 @@ class MemgraphClient:
         self.cache = {}
 
     def execute(self, lm, query, statement):
-        if statement in self.cache:
-            results = self.cache[statement][1]
-        else:
+        # if statement in self.cache:
+        #     results = self.cache[statement][1]
+        # else:
             num_responses = self.num_responses
             response = ''
             responses_hash = set()
@@ -149,6 +149,6 @@ class MemgraphClient:
                             results.append(val)
             #get unique values
             results = list(set(results))
-            self.cache[statement] = [response,results]
+            # self.cache[statement] = [response,results]
 
-        return results
+            return results

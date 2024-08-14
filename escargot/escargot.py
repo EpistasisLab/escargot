@@ -110,7 +110,8 @@ class Escargot:
                     "input": "",
                     "phase": "planning",
                     "method" : "got",
-                    "num_branches_response": num_strategies
+                    "num_branches_response": num_strategies,
+                    "answer_type": answer_type
                 }
             )
             self.controller.run()

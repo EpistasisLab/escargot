@@ -65,6 +65,7 @@ class ESCARGOTParser:
                         new_state["generate_successors"] = 1
                     elif state["phase"] == "python_conversion":
                         new_state = state.copy()
+                        new_state.pop("scores")
                         new_state["input"] = text
                         self.logger.debug(f"Got Python code: {text}")
                         new_state["phase"] = "code_assessment"
@@ -90,6 +91,7 @@ class ESCARGOTParser:
                         
                     elif state["phase"] == "xml_conversion":
                         new_state = state.copy()
+                        new_state.pop("scores")
                         new_state["input"] = text
                         # new_state["phase"] = "xml_cleanup"
                         # new_state["generate_successors"] = 1

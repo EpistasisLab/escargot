@@ -17,12 +17,16 @@ class ESCARGOTPrompter:
 The knowledge graph contains the following generic node types: {node_types}.
 The knowledge graph contains the following relationships: {relationship_types}.
 
-Only show the steps you will take and a small description for each step. If you can determine the knowledge graph relationship that can provide insight in the step, provide the relationship in it and if possible the specific node name, not the node type. If a question require a specific relationship between two specific nodes, provide the specific nodes in the relationship.
-Each step should also try to be clear on what the knowledge request output should be. If the output is a list of genes, then the step should be clear on what genes should be returned.
+Only show the steps you will take and a small description for each step. If you can determine the knowledge graph relationship that can provide insight in the step, provide the relationship in it and the specific node name, not a generic node type. If a question require a specific relationship between two specific nodes, provide the specific nodes in the relationship.
+No step should ask for a generic node type, such as "List all drugs" or "Find all diseases".
+No step should ask for a generic relationship, such as "Determine the relationship between genes and body parts that represents over-expression", such as "GENE OVEREXPRESSES BODYPART".
+Each step MUST be clear on what the knowledge request output should be. If the output is a list of genes, then the step should be clear on what genes should be returned.
 
 Examples:
 Question: List the genes which bind to the drug Cyclothiazide
 Step 1: Find the genes that bind to the drug Cyclothiazide. (CHEMICALBINDSGENE)
+Relationship: CHEMICALBINDSGENE
+Node: Cyclothiazide
 Step 2: List the genes that were found.
 
 Question: List the genes which are commonly under-expressed in spinal cord and thyroid gland
@@ -37,7 +41,24 @@ Action: Compare the lists of genes from steps 1 and 2 to identify common genes u
 
 Question: True or False Question: Posaconazole binds to the gene CYP3A4
 Step 1: Find the drugs that bind to the gene CYP3A4. List the drugs.
+Relationship: GENE BINDS CHEMICAL
+Node: CYP3A4
 Step 2: Check if Posaconazole is in the list of drugs that bind to the gene CYP3A4.
+
+Question: Which of the following belongs to the drug class Serotonin 3 Receptor Antagonists? 1. Dolasetron 2. Trastuzumab 3. Insulin pork 4. Hyaluronidase (ovine) 5. Streptokinase
+Step 1: Find all drugs that are in the class 'Serotonin 3 Receptor Antagonists'
+Relationship: DRUGCLASS
+Node: Serotonin 3 Receptor Antagonists
+Step 2: Check if Dolastrum, Trastuzumab, Insulin pork, Hyaluronidase (ovine), or Streptokinase are in the list of drugs in step 1.
+
+Question: Which of the following under-expresses the genes CLTA and MARK4 ? 1. bronchus 2. sciatic nerve 3. immune system 4. internal capsule of telencephalon 5. uterus
+Step 1: Find the body parts or anatomy that under-expresses the genes CLTA.
+Relationship: BODYPART UNDEREXPRESSES GENE
+Node: CLTA
+Step 2: Find the body parts or anatomy that under-expresses the genes MARK4.
+Relationship: BODYPART UNDEREXPRESSES GENE
+Node: MARK4
+Step 3: List the intersect of body parts
 
 Here is your question:
 {question}
@@ -52,6 +73,7 @@ An approach where there are steps that contain a specific node with a relationsh
 Do not allow steps that simply ask for a generic node, such as "List all drugs" or "Find all diseases". These steps should be be penalized in the score.
 Approaches that do not include a final step that answers the question will score lower.
 If the question is a multiple choice question, the approaches that include the specific multiple choice options in at least one of the steps will score higher.
+In any knowledge request, generic node types should be avoided. If a step requires a specific node, it should be used. For instance, if an approach has a step 'Find the genes that are over-expressed in the brain. (GENE OVEREXPRESSED IN BODYPART-Brain)', it will score higher than an approach that has a step 'Find all genes that are over-expressed in a body part. (GENE OVEREXPRESSED IN BODYPART)'.
 
 The knowledge graph contains node types: {node_types}.
 The knowledge graph contains relationships: {relationship_types}.
@@ -283,11 +305,25 @@ Memgraph request: MATCH (g:Gene) WHERE toLower(g.commonName) = toLower("cytochro
     memgraph_prompt_3 = """Instruction: {instruction}
 Do not get confused with the above examples and return only the Cypher query for the following question: {cypher}"""
 
+    memgraph_adjustment_prompt = """You will be given a potential request extracting information from a knowledge graph, and you must convert the request into a specific format with the following rules:
+1. There are specific node names, generic node types, and relationships that must be used in the query.
+2. The format of the query should be in the form of Node Name-Relationship-Node Name, where the node names can be specific nodes or generic node types.
+3. If possible, use specific node names in the query, not generic node types."""
+
     clean_up_vector_db_prompt = """Use the following information only:
 {knowledge}
 
 Answer the question: {instruction}
 Return only the answer in an array of values. Example: "[A,B,...]"""
+
+    code_adjustment_prompt = """Use the following local variables and context to adjust the python code if you see if it gives more accurate results based on intent:
+{context}
+
+Here is the intent and the code. Do not reassign local variables and assume the local variables are in context. Adjust so that it gives accurate results:
+Instruction: {instruction}
+Code to adjust: {code}
+
+Return the adjusted code only."""
 
     debug_code_prompt = """You will be given a Python code snippet that failed to execute. You must debug the code snippet and provide the corrected code snippet.
 The instruction is as follows:
@@ -301,6 +337,13 @@ The error message is as follows:
 
 You must correct the code snippet and provide the corrected code snippet. Return only the code."""
 
+    array_output_prompt = """Given the following question and instructions, you will be provided with a set of steps, associated Python code, and output for the code. You must provide the final variable that answers the question.
+Question: {question}
+
+Here are the steps, code, and output:
+{steps}
+
+Return the final variable that answers the question."""
 
     output_prompt = """Question:
 {question}
@@ -360,17 +403,6 @@ Question:
                 return self.xml_conversion_prompt.format(instructions=input)
             elif kwargs["phase"] == "xml_cleanup":
                 return self.xml_cleanup_prompt.format(xml=input, node_types=self.node_types, relationship_types=self.relationship_types)
-            # elif kwargs["phase"] == "steps":
-            #     #check for all steps in got_steps for predecessors. If no predecessors, assign the self as predecessor
-            #     if "StepID" not in kwargs:
-            #         return None
-            #     else:
-            #         current_instruction = kwargs["instruction"]
-            #         self.logger.info(f"Current instruction: {current_instruction}")
-            #         if current_instruction['InstructionType'] == "KnowledgeRequest":
-            #             knowledge_requests = current_instruction["KnowledgeRequests"]
-            #         elif current_instruction['InstructionType'] == "Function":
-            #             return self.function_prompt.format(function=current_instruction["Function"], node_types=self.node_types, relationship_types=self.relationship_types)
             elif kwargs["phase"] == "output":
                 steps = ""
                 for step in kwargs["instructions"]:
@@ -380,7 +412,10 @@ Question:
                     if len(str(output)) > 256:
                         output = str(output)[:256] + "..."
                     steps += "Output: " + str(output) + "\n\n"
-                return self.output_prompt.format(question=question, steps=steps)
+                if kwargs["answer_type"] == "array":
+                    return self.array_output_prompt.format(question=question, steps=steps)
+                else:
+                    return self.output_prompt.format(question=question, steps=steps)
         else:
             raise AssertionError(f"Method {method} is not implemented yet.")
     def get_knowledge(self,knowledge_request,instruction):
@@ -430,11 +465,18 @@ Question:
                         break
                     except Exception as e:
                         self.logger.error(f"Error in vector db: {e}, trying again {tries}")
-                
-
                 self.logger.info(f"Vector DB knowledge for {statement_to_embed}: {knowledge_array}")
             return knowledge_array
         return "knowledge"
     def generate_debug_code_prompt(self, code, instruction, e):
         prompt = self.debug_code_prompt.format(instruction=instruction, code=code, error=e)
         return prompt
+    
+    def adjust_code(self, code, instruction, context):
+        prompt = self.code_adjustment_prompt.format(instruction=instruction, code=code, context=context)
+        code = self.lm.get_response_texts(
+            self.lm.query(prompt, num_responses=1)
+        )[0]
+        self.logger.debug(f"Adjusting code prompt: {prompt}")
+        self.logger.debug(f"Adjusted code: {code}")
+        return code
