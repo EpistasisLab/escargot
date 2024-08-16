@@ -137,3 +137,12 @@ class Escargot:
 
         self.logger.warning(f"Output: {output}")
         return output
+    
+    def quick_chat(self,chat, num_responses=1):
+        if self.lm is not None:
+            response = self.lm.get_response_texts(
+                    self.lm.query(chat, num_responses=num_responses)
+                )
+            return response[0]
+        else:
+            return "No language model available."
