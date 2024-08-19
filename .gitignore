@@ -163,3 +163,9 @@ cython_debug/
 
 # Config File
 **/config.json
+
+
+# Ignore private benchmarking notebook
+benchmarking_private.ipynb
+benchmarking_chatgpt3.5.py
+benchmarking_chatgpt3.5_RAG.py
