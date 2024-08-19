@@ -15,15 +15,15 @@ def get_token_length(text, model="gpt-3.5-turbo"):
     tokens = tokenizer.encode(text)
     return len(tokens)
 
-def calculate_message_length(in_context, message_text, question, model="gpt-3.5-turbo"):
+def calculate_message_length( message_text, model="gpt-3.5-turbo"):
         
         
         total_length = sum(get_token_length(msg['content'], model) for msg in message_text)
         return total_length
 
 # def get_client(url="http://54.203.49.88"):
-def get_client(url="http://100.21.60.48"):    
-    auth_config = weaviate.AuthApiKey(api_key=os.environ["WEAVIATE_APIKEY"])
+def get_client(url="http://100.21.60.48", weaviate_api_key = None):   
+    auth_config = weaviate.AuthApiKey(api_key=weaviate_api_key)
     global weaviate_client
     if weaviate_client is None:
         weaviate_client = weaviate.Client(
@@ -58,15 +58,18 @@ def query_near_text(class_name="AlzKB", properties=["knowledge"], near_text=["ge
     )
 
 
-def query_my_near_text(class_name="AlzKB", properties=["knowledge"], prompt="genes", additional="score", limit=3):
+def query_my_near_text(class_name="AlzKB", properties=["knowledge"], prompt="genes", additional="score", limit=3, config_RAG_TEST = None):
     vector = {
-        "vector": get_embedding(prompt)
+        "vector": get_embedding(prompt, config_RAG_TEST)
     }
     # print(vector["vector"])
-    return query_near_vector(class_name, properties, near_vector=vector, additional=additional, limit=limit)
+    return query_near_vector(class_name, properties, near_vector=vector, additional=additional, limit=limit, config_RAG_TEST=config_RAG_TEST)
 
-def query_near_vector(class_name="AlzKB", properties=["knowledge"], near_vector={}, additional="score", limit=3):
-    return ((get_client().query
+def query_near_vector(class_name="AlzKB", properties=["knowledge"], near_vector={}, additional="score", limit=3, config_RAG_TEST = None):
+    WEAVIATE_APIKEY = config_RAG_TEST["weaviate"]["api_key"]
+    # weaviate url
+    weaviate_url = config_RAG_TEST["weaviate"]["url"]
+    return ((get_client(url=weaviate_url ,weaviate_api_key = WEAVIATE_APIKEY).query
         .get(class_name, properties))
         .with_near_vector(near_vector)
         .with_limit(limit)
@@ -80,10 +83,34 @@ def object_count(class_name="AlzKB"):
         .with_meta_count()
         .do()))
     
-def get_answer(model, question,knowledge_array,temperature = 0, max_tokens=1000):
+def get_answer(question, knowledge_array, config_RAG_TEST = None):
     
+
+    # Azure 
+    AZURE_OPENAI_KEY = config_RAG_TEST["azuregpt35-16k"]["api_key"]
+
+    
+    model = config_RAG_TEST["azuregpt35-16k"]["model_id"]
+    print("model: ", model)
+
+    # temperature_azure_gpt = 0
+    # temperature_azure_gpt = 0.7
+    temperature = config_RAG_TEST["azuregpt35-16k"]["temperature"]
+
+    # max_tokens_azure_gpt = 1000
+    max_tokens = config_RAG_TEST["azuregpt35-16k"]["max_tokens"]
+
+    # api_version
+    api_version = config_RAG_TEST["azuregpt35-16k"]["api_version"]
+
+
+    # AZURE_OPENAI_ENDPOINT=https://caire-azure-openai.openai.azure.com/openai/deployments/gpt-35-turbo-16k/chat/completions?api-version=2023-07-01-preview
+
+    AZURE_OPENAI_ENDPOINT = config_RAG_TEST["azuregpt35-16k"]["api_base"]+"api-version="+api_version
+
+
     # if model is gpt-35-turbo-16k then max
-    if model == "gpt-3.5-turbo-16k":
+    if model == "gpt-35-turbo-16k":
         max_context_length = 16384
     
 
@@ -92,13 +119,12 @@ def get_answer(model, question,knowledge_array,temperature = 0, max_tokens=1000)
     # print length of in_context
     print("length of in_context: ", len(in_context))
     client = AzureOpenAI(
-        api_key=os.environ["AZURE_OPENAI_KEY"],
-        api_version="2023-07-01-preview",
-        azure_endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
+        api_key=AZURE_OPENAI_KEY,
+        api_version=api_version,
+        azure_endpoint = AZURE_OPENAI_ENDPOINT
         )
         
-    # deployment_name='gpt-35-turbo-16k' #This will correspond to the custom name you chose for your deployment when you deployed a model. 
-    deployment_name = model
+
     
     message_text = [{"role":"system","content":"""You are an Alzheimer's data specialist AI assistant dedicated to providing information and support related to Alzheimer's disease.
         Your primary goal is to assist users by offering factual and relevant information based on your access to a comprehensive knowledge graph associated with Alzheimer's. 
@@ -114,7 +140,7 @@ def get_answer(model, question,knowledge_array,temperature = 0, max_tokens=1000)
     
 
     # initial message length check
-    message_length = calculate_message_length(in_context, message_text, question)
+    message_length = calculate_message_length(message_text)
     print("Initial token length of message_text: ", message_length)
 
     # Reduce in_context size until it fits within max_context_length
@@ -137,14 +163,14 @@ def get_answer(model, question,knowledge_array,temperature = 0, max_tokens=1000)
         {"role":"user","content":"Here is the knowledge from the knowledge graph: "+in_context+"\nThe question is: "+question}]
         
 
-        message_length = calculate_message_length(in_context, message_text, question)
+        message_length = calculate_message_length(message_text)
         print("Reduced token length of message_text: ", message_length)
     
     # text that may help:
     # When you reply, please provide a followup response that includes the exact knowledge from the knowledge graph that you used to generate your response, and please do not include the knowledge that are not used.
         
     response = client.chat.completions.create(
-        model=deployment_name, # model = "deployment_name".
+        model=model, # model = "deployment_name".
         max_tokens=max_tokens,
         messages=message_text,
         temperature=temperature
@@ -155,15 +181,18 @@ def get_answer(model, question,knowledge_array,temperature = 0, max_tokens=1000)
     return response.choices[0].message.content
 
 
-def get_answer_without_ICL_Azure_gpt_35_turbo_16k(question,temperature = 0, max_tokens=1000):
+def get_answer_without_ICL_Azure_gpt_35_turbo_16k(question, config_RAG_TEST = None):
+    temperature = config_RAG_TEST["azuregpt35-16k"]["temperature"]
+    max_tokens = config_RAG_TEST["azuregpt35-16k"]["max_tokens"]
+
     # in_context = "\n".join(knowledge_array)
     client = AzureOpenAI(
-        api_key=os.environ["AZURE_OPENAI_KEY"],
-        api_version="2023-07-01-preview",
-        azure_endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
+        api_key=config_RAG_TEST["azuregpt35-16k"]["api_key"],
+        api_version=config_RAG_TEST["azuregpt35-16k"]["api_version"],
+        azure_endpoint = config_RAG_TEST["azuregpt35-16k"]["api_base"]+"api-version="+config_RAG_TEST["azuregpt35-16k"]["api_version"]
         )
         
-    deployment_name='gpt-35-turbo-16k' #This will correspond to the custom name you chose for your deployment when you deployed a model.
+    deployment_name=config_RAG_TEST["azuregpt35-16k"]["model_id"] #This will correspond to the custom name you chose for your deployment when you deployed a model.
     
     
     message_text = [{"role":"system","content":"""You are an Alzheimer's data specialist AI assistant dedicated to providing information and support related to Alzheimer's disease.
@@ -343,16 +372,25 @@ def get_score_from_comparison(comparison):
     )
     return response.choices[0].message.content
 
-def get_knowledge(question, max_tokens=4000, quantile = 0.2, max_distance = 0.3, show_distances = False):
+def get_knowledge(question, config_RAG_TEST = None):
+
+    # weaviate
+    max_tokens = config_RAG_TEST["weaviate"]["max_tokens_weaviate"]
+    quantile = config_RAG_TEST["weaviate"]["quantile_weaviate"]
+    max_distance = config_RAG_TEST["weaviate"]["max_distance_weaviate"]
+    
+
+    
 
     # print question, max_tokens, quantile, max_distance, show_distances using print function
-    print("question: ", question)
-    print("max_tokens: ", max_tokens)
-    print("quantile: ", quantile)
-    print("max_distance: ", max_distance)
-    print("show_distances: ", show_distances)
+    # print("question: ", question)
+    # print("max_tokens: ", max_tokens)
+    # print("quantile: ", quantile)
+    # print("max_distance: ", max_distance)
+    # print("show_distances: ", show_distances)
 
-    knowledge_array = query_my_near_text(prompt=question, additional=["distance"], limit=2000)
+    knowledge_array = query_my_near_text(prompt=question, additional=["distance"], limit=2000,config_RAG_TEST=config_RAG_TEST)
+
     knowledge_array = knowledge_array["data"]["Get"]["AlzKB"]
     
     all_distances = [x['_additional']["distance"] for x in knowledge_array]
