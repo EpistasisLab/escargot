@@ -84,8 +84,6 @@ escargot = Escargot(
 ```
 ### Ask a question
 
-### Ask a Question
-
 To query the `Escargot` library, use the `ask` function. You can specify optional parameters such as `debug_level` and `answer_type` to control the verbosity of logging and the format of the response.
 
 #### Example of extracting information from the knowledge graph
