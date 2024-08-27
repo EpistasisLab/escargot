@@ -16,6 +16,22 @@ of both code and knowledge requests, in contrast to the black-box nature of LLM-
 
 ESCARGOT significantly outperforms industry-standard RAG methods, particularly in open-ended questions that demand high precision. ESCARGOT also offers greater transparency in its reasoning process, allowing for the vetting of both code and knowledge requests, in contrast to the black-box nature of LLM-only or RAG-based approaches.
 
+## Results
+
+<div style="text-align: center;">
+
+| **Dataset**                                      | **GPT 3.5 Turbo** | **Standard RAG**  | **ESCARGOT**       |
+|--------------------------------------------------|-------------------|----------|--------------------|
+| Openended 1-hop (508 questions)                  | 3.3%              | 50.2%    | **81.0%**          |
+| Openended 2-hop (450 questions)                  | 3.5%              | 12.8%    | **91.8%**          |
+| True/False 1-hop (560 questions)                 | 55.9%             | 73.0%    | **80.7%**          |
+| True/False 2-hop                                 | 26.7%             | 64.4%    | **77.6%**          |
+| Multiple Choice 1-hop (498 questions)            | 42.6%             | 77.7%    | **94.6%**          |
+| Multiple Choice 2-hop (419 questions)            | 49.9%             | 81.9%    | **94.2%**          |
+
+</div>
+
+
 ## Key Features
 
 1. **Dynamic GoT Generation**: ESCARGOT dynamically generates a Python-executable Graph of Thoughts (GoT) that integrates with knowledge graphs. This dynamic approach ensures improved accuracy and contextual relevance compared to static GoT frameworks.
