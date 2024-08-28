@@ -8,6 +8,7 @@
 
 import escargot.language_models as language_models
 import escargot.controller as controller
+import escargot.memory as memory
 from escargot.parser import ESCARGOTParser
 from escargot.prompter import ESCARGOTPrompter
 from escargot import operations
@@ -22,12 +23,13 @@ import escargot.cypher.memgraph as memgraph
 
 class Escargot:
 
-    def __init__(self, config: str, node_types:str = "", relationship_types:str = "", model_name: str = "azuregpt35-16k"):
+    def __init__(self, config: str, node_types:str = "", relationship_types:str = "", model_name: str = "azuregpt35-16k", memory_name: str = "escargot_memory"):
         logger = logging.getLogger(__name__)
         self.logger = logger
         self.log = ""
         self.lm = language_models.AzureGPT(config, model_name=model_name, logger=logger)
         self.vdb = WeaviateClient(config, self.logger)
+        self.memory = memory.Memory(self.lm, collection_name = memory_name)
         self.node_types = ""
         self.relationship_types = ""
         self.question = ""
