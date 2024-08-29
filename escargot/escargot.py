@@ -47,24 +47,7 @@ class Escargot:
                 self.node_types = node_types
                 self.relationship_types = relationship_types
     
-    #debug_level: 0, 1, 2, 3
-    #0: no debug, only output
-    #1: output, instructions, and exceptions
-    #2: output, instructions, exceptions, and debug info
-    #3: output, instructions, exceptions, debug info, and LLM output
-    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0):
-        """
-        Ask a question and get an answer.
-
-        :param question: The question to ask.
-        :type question: str
-        :param answer_type: The type of answer to expect. Defaults to 'natural'. Options are 'natural', 'array'.
-        :type answer_type: str
-        :param num_strategies: The number of strategies to generate. Defaults to 3.
-        :type num_strategies: int
-        :return: The answer to the question.
-        :rtype: str
-        """
+    def setup_logger(self, debug_level):
         log_stream = io.StringIO()
         f_handler = logging.StreamHandler(log_stream)
         c_handler = logging.StreamHandler()
@@ -89,6 +72,38 @@ class Escargot:
         f_handler.setFormatter(c_format)
         self.logger.addHandler(f_handler)
         self.logger.addHandler(c_handler)
+
+        return log_stream, c_handler, f_handler
+
+    def finalize_logger(self,log_stream, c_handler, f_handler):
+        self.log = log_stream.getvalue()
+        #reset logger
+        self.logger.removeHandler(c_handler)
+        c_handler.close()
+        self.logger.removeHandler(f_handler)
+        f_handler.close()
+
+    #debug_level: 0, 1, 2, 3
+    #0: no debug, only output
+    #1: output, instructions, and exceptions
+    #2: output, instructions, exceptions, and debug info
+    #3: output, instructions, exceptions, debug info, and LLM output
+    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0):
+        """
+        Ask a question and get an answer.
+
+        :param question: The question to ask.
+        :type question: str
+        :param answer_type: The type of answer to expect. Defaults to 'natural'. Options are 'natural', 'array'.
+        :type answer_type: str
+        :param num_strategies: The number of strategies to generate. Defaults to 3.
+        :type num_strategies: int
+        :return: The answer to the question.
+        :rtype: str
+        """
+
+        #setup logger
+        log_stream, c_handler, f_handler = self.setup_logger(debug_level)
 
         def got() -> operations.GraphOfOperations:
             operations_graph = operations.GraphOfOperations()
@@ -120,13 +135,8 @@ class Escargot:
         except Exception as e:
             self.logger.error("Error executing controller: %s", e)
 
-        self.log = log_stream.getvalue()
-
-        #reset logger
-        self.logger.removeHandler(c_handler)
-        c_handler.close()
-        self.logger.removeHandler(f_handler)
-        f_handler.close()
+        #remove logger
+        self.finalize_logger(log_stream, c_handler, f_handler)
 
         self.operations_graph = self.controller.graph.operations
         output = ""
