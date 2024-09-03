@@ -1,1 +1,1 @@
-from .prompter import ESCARGOTPrompter
+from escargot.prompter import ESCARGOTPrompter

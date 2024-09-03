@@ -1,2 +1,2 @@
-from .azure_embedding import *
-from .weaviate import *
+from escargot.vector_db.azure_embedding import *
+from escargot.vector_db.weaviate import *

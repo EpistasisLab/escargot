@@ -1,2 +1,2 @@
 __version__ = '0.0.1'
-from .escargot import Escargot
+from escargot.escargot import *

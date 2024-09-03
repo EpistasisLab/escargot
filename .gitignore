@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# chromadb
+escargot_memory/
+
 # C extensions
 *.so
 

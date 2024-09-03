@@ -7,10 +7,6 @@
 
 
 import escargot.language_models as language_models
-import escargot.controller as controller
-from escargot.parser import ESCARGOTParser
-from escargot.prompter import ESCARGOTPrompter
-from escargot import operations
 import logging
 import io
 
@@ -28,6 +24,7 @@ class Escargot:
         self.log = ""
         self.lm = language_models.AzureGPT(config, model_name=model_name, logger=logger)
         self.vdb = WeaviateClient(config, self.logger)
+        self.memory = None
         self.node_types = ""
         self.relationship_types = ""
         self.question = ""
@@ -45,24 +42,7 @@ class Escargot:
                 self.node_types = node_types
                 self.relationship_types = relationship_types
     
-    #debug_level: 0, 1, 2, 3
-    #0: no debug, only output
-    #1: output, instructions, and exceptions
-    #2: output, instructions, exceptions, and debug info
-    #3: output, instructions, exceptions, debug info, and LLM output
-    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0):
-        """
-        Ask a question and get an answer.
-
-        :param question: The question to ask.
-        :type question: str
-        :param answer_type: The type of answer to expect. Defaults to 'natural'. Options are 'natural', 'array'.
-        :type answer_type: str
-        :param num_strategies: The number of strategies to generate. Defaults to 3.
-        :type num_strategies: int
-        :return: The answer to the question.
-        :rtype: str
-        """
+    def setup_logger(self, debug_level):
         log_stream = io.StringIO()
         f_handler = logging.StreamHandler(log_stream)
         c_handler = logging.StreamHandler()
@@ -88,6 +68,39 @@ class Escargot:
         self.logger.addHandler(f_handler)
         self.logger.addHandler(c_handler)
 
+        return log_stream, c_handler, f_handler
+
+    def finalize_logger(self,log_stream, c_handler, f_handler):
+        self.log += log_stream.getvalue()
+        #reset logger
+        self.logger.removeHandler(c_handler)
+        c_handler.close()
+        self.logger.removeHandler(f_handler)
+        f_handler.close()
+
+    #debug_level: 0, 1, 2, 3
+    #0: no debug, only output
+    #1: output, instructions, and exceptions
+    #2: output, instructions, exceptions, and debug info
+    #3: output, instructions, exceptions, debug info, and LLM output
+    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "escargot_memory"):
+        """
+        Ask a question and get an answer.
+
+        :param question: The question to ask.
+        :type question: str
+        :param answer_type: The type of answer to expect. Defaults to 'natural'. Options are 'natural', 'array'.
+        :type answer_type: str
+        :param num_strategies: The number of strategies to generate. Defaults to 3.
+        :type num_strategies: int
+        :return: The answer to the question.
+        :rtype: str
+        """
+        import escargot.memory as memory
+        self.memory = memory.Memory(self.lm, collection_name = memory_name)
+        #setup logger
+        log_stream, c_handler, f_handler = self.setup_logger(debug_level)
+        from escargot import operations
         def got() -> operations.GraphOfOperations:
             operations_graph = operations.GraphOfOperations()
 
@@ -99,6 +112,9 @@ class Escargot:
         # Create the Controller
         got = got()
         try:
+            from escargot.parser import ESCARGOTParser
+            from escargot.prompter import ESCARGOTPrompter
+            import escargot.controller as controller
             self.controller = controller.Controller(
                 self.lm, 
                 got, 
@@ -118,14 +134,6 @@ class Escargot:
         except Exception as e:
             self.logger.error("Error executing controller: %s", e)
 
-        self.log = log_stream.getvalue()
-
-        #reset logger
-        self.logger.removeHandler(c_handler)
-        c_handler.close()
-        self.logger.removeHandler(f_handler)
-        f_handler.close()
-
         self.operations_graph = self.controller.graph.operations
         output = ""
         if self.controller.final_thought is not None:
@@ -136,6 +144,66 @@ class Escargot:
                 output = list(self.controller.coder.step_output.values())[-1]
 
         self.logger.warning(f"Output: {output}")
+
+        #remove logger
+        self.finalize_logger(log_stream, c_handler, f_handler)
+
+        return output
+    
+    def initialize_controller(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0):
+        
+        #setup logger
+        log_stream, c_handler, f_handler = self.setup_logger(debug_level)
+
+        def got() -> operations.GraphOfOperations:
+            operations_graph = operations.GraphOfOperations()
+
+            instruction_node = operations.Generate(1, 1)
+            operations_graph.append_operation(instruction_node)
+            
+            return operations_graph
+        
+        # Create the Controller
+        got = got()
+        try:
+            from escargot.parser import ESCARGOTParser
+            from escargot.prompter import ESCARGOTPrompter
+            self.controller = controller.Controller(
+                self.lm, 
+                got, 
+                ESCARGOTPrompter(memgraph_client = self.memgraph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
+                ESCARGOTParser(self.logger),
+                self.logger,
+                {
+                    "question": question,
+                    "input": "",
+                    "phase": "planning",
+                    "method" : "got",
+                    "num_branches_response": num_strategies,
+                    "answer_type": answer_type
+                }
+            )
+        except Exception as e:
+            self.logger.error("Error initializing controller: %s", e)
+        self.finalize_logger(log_stream, c_handler, f_handler)
+
+    def step(self):
+        #setup logger
+        log_stream, c_handler, f_handler = self.setup_logger(self.logger.level)
+        try:
+            self.controller.execute_step()
+        except Exception as e:
+            self.logger.error("Error executing controller: %s", e)
+
+        output = ""
+        if self.controller.final_thought is not None:
+            self.operations_graph = self.controller.graph.operations
+            output = self.controller.final_thought.state['input']
+
+        self.logger.warning(f"Output: {output}")
+
+        #remove logger
+        self.finalize_logger(log_stream, c_handler, f_handler)
         return output
     
     def quick_chat(self,chat, num_responses=1):
