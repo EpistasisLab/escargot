@@ -1,1 +1,1 @@
-from escargot.parser import ESCARGOTParser
+from escargot.parser.parser import ESCARGOTParser
