@@ -1,1 +1,1 @@
-from .memory import Memory
+from escargot.memory import Memory
