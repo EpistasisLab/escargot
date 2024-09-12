@@ -20,14 +20,14 @@ ESCARGOT significantly outperforms industry-standard RAG methods, particularly i
 
 <div style="text-align: center;">
 
-| **Dataset**                                      | **GPT 3.5 Turbo** | **Standard RAG**  | **ESCARGOT**       |
-|--------------------------------------------------|-------------------|----------|--------------------|
-| Openended 1-hop (508 questions)                  | 3.3%              | 50.2%    | **81.0%**          |
-| Openended 2-hop (450 questions)                  | 3.5%              | 12.8%    | **91.8%**          |
-| True/False 1-hop (560 questions)                 | 55.9%             | 73.0%    | **80.7%**          |
-| True/False 2-hop (540 questions)                 | 26.7%             | 64.4%    | **77.6%**          |
-| Multiple Choice 1-hop (498 questions)            | 42.6%             | 77.7%    | **94.6%**          |
-| Multiple Choice 2-hop (419 questions)            | 49.9%             | 81.9%    | **94.2%**          |
+| **Dataset**                                      | **GPT 3.5 Turbo** | **Standard RAG**  | **KRAGEN** | **ESCARGOT**       |
+|--------------------------------------------------|-------------------|----------|-------------|--------------------|
+| Openended 1-hop (508 questions)                  | 3.3%              | 50.2%    | 53.1%    | **81.0%**          |
+| Openended 2-hop (450 questions)                  | 3.5%              | 12.8%    | 19.9%    | **91.8%**          |
+| True/False 1-hop (560 questions)                 | 55.9%             | 73.0%    | 80.2%    | **80.7%**          |
+| True/False 2-hop (540 questions)                 | 26.7%             | 64.4%    | 62.4%    | **77.6%**          |
+| Multiple Choice 1-hop (498 questions)            | 42.6%             | 77.7%    | 65.1%    | **94.6%**          |
+| Multiple Choice 2-hop (419 questions)            | 49.9%             | 81.9%    | 62.2%    | **94.2%**          |
 
 </div>
 
