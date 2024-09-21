@@ -38,7 +38,7 @@ class Coder:
         self.executed_code = {}
         self.instructions = {}
 
-    def execute_code(self, code: str, instruction: str, step_id: str, prompter: ESCARGOTPrompter, logger: logging.Logger) -> str:
+    def execute_code(self, code: str, instruction: str, step_id: str, prompter: ESCARGOTPrompter, logger: logging.Logger, full_code = "") -> str:
         """
         Execute the code and return the output.
 
@@ -63,7 +63,7 @@ class Coder:
             # code = prompter.adjust_code(code, instruction, context)
 
         def knowledge_extract(request):
-            return prompter.get_knowledge(request,instruction)
+            return prompter.get_knowledge(request,instruction,code,full_code)
         # Add the knowledge_extract function to the local context
         self.local_context["knowledge_extract"] = knowledge_extract
         self.local_context["prompter"] = prompter

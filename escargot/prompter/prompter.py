@@ -345,6 +345,31 @@ Here are the steps, code, and output:
 
 Return the final variable that answers the question."""
 
+    determine_variable_name_prompt = """Given the following Python code, you will be asked to determine the variable name for the knowledge request. A knowledge request should look like: variable_a = knowledge_request("GENE OVEREXPRESSED IN BODYPART-Brain")
+
+Code: {code}
+    
+Return only the variable name."""
+
+    determine_datastructure_prompt = """Given the following variable and Python code, you will be asked to determine the data structure of the variable.
+Variable: {variable}
+
+Code: {code}
+
+Determine the data structure of the variable. If it is a list, return 'list'. If it is a dictionary, return 'dictionary' along with details about the key names. """
+
+    convert_datastructure_prompt = """Given the following variable name, an incomplete preview of its contents (which can be either a dictionary or list), and the original code where the variable is already set but may fail to compile, please return code that modifies the data structure of the variable if needed. The code should convert the variable into a format that will allow the original code to compile. The conversion should happen after the variable is instantiated.
+Variable name:
+{variable}
+                       
+Preview of its contents:
+{knowledge_array}
+                       
+Original code:
+{code}
+
+Take note of the data structure of the variable and also the data structure of it in the original code after the variable is instantiated. Think step by step and write your thoughts about the data structures you see. Once you think in steps, return only the Python code snippet that converts the data structure in between ``` tags, and if conversion is not needed, do not add any code in your response. Do not return the original code."""
+
     output_prompt = """Question:
 {question}
 
@@ -355,12 +380,13 @@ Describe the thought process above, and then answer the question. Do not include
 
 Question:
 {question}"""
-    def __init__(self,vector_db = None, lm = None, memgraph_client = None, node_types = "", relationship_types = "", logger: logging.Logger = None):
+    def __init__(self,vector_db = None, lm = None, memgraph_client = None, node_types = "", relationship_types = "", relationship_scores = "", logger: logging.Logger = None):
         self.vector_db = vector_db
         self.lm = lm
         self.memgraph_client = memgraph_client
         self.node_types = node_types
         self.relationship_types = relationship_types
+        self.relationship_scores = relationship_scores
         self.logger = logger
         pass
      
@@ -392,9 +418,9 @@ Question:
         assert question is not None, "Question should not be None."
         if method == "got":
             if (input is None or input == "") and kwargs["phase"] == "planning":
-                return self.planning_prompt.format(question=question, node_types=self.node_types, relationship_types=self.relationship_types)
+                return self.planning_prompt.format(question=question, node_types=self.node_types, relationship_types=self.relationship_types, relationship_scores=self.relationship_scores)
             elif kwargs["phase"] == "plan_assessment":
-                return self.plan_assessment_prompt.format(question=question, approach_1=input[0], approach_2=input[1], approach_3=input[2], node_types=self.node_types, relationship_types=self.relationship_types)
+                return self.plan_assessment_prompt.format(question=question, approach_1=input[0], approach_2=input[1], approach_3=input[2], node_types=self.node_types, relationship_types=self.relationship_types, relationship_scores=self.relationship_scores)
             elif kwargs["phase"] == "python_conversion":
                 return self.python_conversion_prompt.format(instructions=input)
             elif kwargs["phase"] == "code_assessment":
@@ -418,7 +444,7 @@ Question:
                     return self.output_prompt.format(question=question, steps=steps)
         else:
             raise AssertionError(f"Method {method} is not implemented yet.")
-    def get_knowledge(self,knowledge_request,instruction):
+    def get_knowledge(self,knowledge_request,instruction, code = "", full_code = ""):
         statement_to_embed = knowledge_request
         if statement_to_embed == "" or statement_to_embed is None:
             return []
@@ -430,11 +456,13 @@ Question:
         # If it's a cypher query, then execute the query and return the results directly
         if self.memgraph_client is not None:
             knowledge_array = self.memgraph_client.execute(self.lm, self.memgraph_prompt_1.format(schema=self.memgraph_client.schema) + str(self.memgraph_prompt_2) + str(self.memgraph_prompt_3.format(instruction=str(instruction),cypher=str(statement_to_embed))),str(statement_to_embed))
+            
             self.logger.info(f"Cypher knowledge for {statement_to_embed}: {str(knowledge_array)}")
+
             #backup if the memgraph client fails or doesn't provide any knowledge
             if knowledge_array == [] and self.vector_db is not None:
                 statement_to_embeds = self.lm.get_response_texts(
-                    self.lm.query(self.knowledge_request_adjustment_prompt.format(node_types=self.node_types,relationship_types=self.relationship_types, statement_to_embed=statement_to_embed, instruction=instruction), num_responses=3)
+                    self.lm.query(self.knowledge_request_adjustment_prompt.format(node_types=self.node_types,relationship_types=self.relationship_types, statement_to_embed=statement_to_embed, instruction=instruction, relationship_scores = self.relationship_scores), num_responses=3)
                 )
                 #get the most common element in the list
                 statement_to_embed = max(set(statement_to_embeds), key = statement_to_embeds.count)
@@ -466,6 +494,40 @@ Question:
                     except Exception as e:
                         self.logger.error(f"Error in vector db: {e}, trying again {tries}")
                 self.logger.info(f"Vector DB knowledge for {statement_to_embed}: {knowledge_array}")
+            elif knowledge_array != []:
+
+                variable_name = self.lm.get_response_texts(
+                    self.lm.query(self.determine_variable_name_prompt.format(code=code), num_responses=1)
+                )
+                variable_name = variable_name[0]
+
+                knowledge_array_string = str(knowledge_array)[0:128]+"..."  
+                conversion_codes = self.lm.get_response_texts(
+                        self.lm.query(self.convert_datastructure_prompt.format(variable=variable_name, knowledge_array=knowledge_array_string, code=full_code), num_responses=3)
+                    )
+                i = 0
+                while i < 3:
+                    try:
+                        conversion_code = conversion_codes[i]
+                        i += 1
+                        #find code in ```python tags
+                        if "```python" in conversion_code:
+                            conversion_code = re.findall(r'```python(.*?)```', conversion_code, re.DOTALL)[0]
+                        elif "```" in conversion_code:
+                            conversion_code = re.findall(r'```(.*?)```', conversion_code, re.DOTALL)[0]
+                        else:
+                            conversion_code = ""
+
+                        if conversion_code != "":
+                            conversion_code = variable_name + " = " + str(knowledge_array) + "\n" + conversion_code
+                            #execute the code
+                            exec(conversion_code)
+                            knowledge_array = eval(variable_name)
+                        break
+                    except Exception as e:
+                        
+                        self.logger.error(f"Error in converting data structure: {e}, trying again {i}")
+                
             return knowledge_array
         return "knowledge"
     def generate_debug_code_prompt(self, code, instruction, e):
@@ -480,3 +542,16 @@ Question:
         self.logger.debug(f"Adjusting code prompt: {prompt}")
         self.logger.debug(f"Adjusted code: {code}")
         return code
+    
+    def restructure_data_structure(self, data, context):
+        prompt = self.determine_datastructure_prompt.format(data=data, context=context)
+        data_format = self.lm.get_response_texts(
+           self.lm.query(prompt, num_responses=1)
+        )[0]
+
+        prompt = self.restructure_datastructure_code_prompt.format(data=data, context=context)
+        data = self.lm.get_response_texts(
+            self.lm.query(prompt, num_responses=1)
+        )[0]
+
+        return data

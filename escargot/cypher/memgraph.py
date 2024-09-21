@@ -137,18 +137,18 @@ class MemgraphClient:
                 except Exception as e:
                     self.logger.error(f"Error in memgraph: {e}, trying again {iter}")
             self.logger.info(f"Memgraph results: {memgraph_results}")
-            results = []
-            # get the value in the dictionary x in memgraph_results
-            for value in memgraph_results:
-                for key, val in value.items():
-                    if val != [] and val != None and val != "":
-                        if type(val) == list:
-                            for v in val:
-                                results.append(v)
-                        else:
-                            results.append(val)
-            #get unique values
-            results = list(set(results))
+            # results = []
+            # # get the value in the dictionary x in memgraph_results
+            # for value in memgraph_results:
+            #     for key, val in value.items():
+            #         if val != [] and val != None and val != "":
+            #             if type(val) == list:
+            #                 for v in val:
+            #                     results.append(v)
+            #             else:
+            #                 results.append(val)
+            # #get unique values
+            # results = list(set(results))
             # self.cache[statement] = [response,results]
 
-            return results
+            return memgraph_results

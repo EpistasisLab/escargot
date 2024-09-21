@@ -188,7 +188,7 @@ class Generate(Operation):
             self.logger.debug("Prompt for LM: \n%s", prompts[-1])
         elif "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Code"] is not None:
             code = base_state["instruction"]["Code"][0]
-            new_code, compiled = self.coder.execute_code(code, base_state["instruction"]["Instruction"], base_state["StepID"], prompter, self.logger)
+            new_code, compiled = self.coder.execute_code(code, base_state["instruction"]["Instruction"], base_state["StepID"], prompter, self.logger, base_state["full_code"])
             new_state  = {**base_state, "input": new_code, "compiled": compiled}
             new_state["instructions"][int(base_state["StepID"])-1]['Code'] = [new_code]
             new_states.append(new_state)
@@ -311,6 +311,8 @@ class Generate(Operation):
                         if type(self.thoughts[-1].state["input"]) == str:
                             self.thoughts[-1].state["input"] = [self.thoughts[-1].state["input"]]
                         self.thoughts[-1].state["input"].append(new_state["input"])
+                        if self.thoughts[-1].state["phase"] == "code_assessment":
+                            self.thoughts[-1].state["full_code"] = new_state["input"]
                         continue
                     elif self.thoughts[-1].state["phase"] == "output":
                         self.thoughts[-1].state["input"] = new_state["input"]
