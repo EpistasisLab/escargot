@@ -1,14 +1,9 @@
-#TODO:
-#semi-auto, full-auto modes:
-    #step function to step into the next on the execution queue
-    #chat log function for outputting later
-#just like got_steps variable, we need an entire edge list and accessibility to any step
-#accessing and rerunning steps (what are the existing values that need to be updated, new variables? [reran, attempted, previous_executions])
-
-
 import escargot.language_models as language_models
 import logging
 import io
+from escargot import operations
+import escargot.controller as controller
+import escargot.memory as memory
 
 #vectorized knowledge
 from escargot.vector_db.weaviate import WeaviateClient
@@ -83,7 +78,7 @@ class Escargot:
     #1: output, instructions, and exceptions
     #2: output, instructions, exceptions, and debug info
     #3: output, instructions, exceptions, debug info, and LLM output
-    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "escargot_memory"):
+    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "escargot_memory", max_run_tries = 3):
         """
         Ask a question and get an answer.
 
@@ -96,11 +91,11 @@ class Escargot:
         :return: The answer to the question.
         :rtype: str
         """
-        import escargot.memory as memory
+        
         self.memory = memory.Memory(self.lm, collection_name = memory_name)
         #setup logger
         log_stream, c_handler, f_handler = self.setup_logger(debug_level)
-        from escargot import operations
+        
         def got() -> operations.GraphOfOperations:
             operations_graph = operations.GraphOfOperations()
 
@@ -114,7 +109,7 @@ class Escargot:
         try:
             from escargot.parser import ESCARGOTParser
             from escargot.prompter import ESCARGOTPrompter
-            import escargot.controller as controller
+            
             self.controller = controller.Controller(
                 self.lm, 
                 got, 
@@ -130,6 +125,7 @@ class Escargot:
                     "answer_type": answer_type
                 }
             )
+            self.controller.max_run_tries = max_run_tries
             self.controller.run()
         except Exception as e:
             self.logger.error("Error executing controller: %s", e)
@@ -151,7 +147,10 @@ class Escargot:
         return output
     
     def initialize_controller(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0):
-        
+        if self.controller is not None:
+            del self.controller
+            self.controller = None
+
         #setup logger
         log_stream, c_handler, f_handler = self.setup_logger(debug_level)
 
@@ -191,7 +190,7 @@ class Escargot:
         #setup logger
         log_stream, c_handler, f_handler = self.setup_logger(self.logger.level)
         try:
-            self.controller.execute_step()
+            current_thought = self.controller.execute_step()
         except Exception as e:
             self.logger.error("Error executing controller: %s", e)
 
@@ -204,7 +203,7 @@ class Escargot:
 
         #remove logger
         self.finalize_logger(log_stream, c_handler, f_handler)
-        return output
+        return current_thought
     
     def quick_chat(self,chat, num_responses=1):
         if self.lm is not None:
@@ -214,3 +213,46 @@ class Escargot:
             return response[0]
         else:
             return "No language model available."
+        
+    def generate_plan(self, question, num_strategies=3, debug_level = 0, memory_name = "escargot_memory", max_run_tries = 3):
+        """
+        Generate a plan to answer a question.
+
+        :param question: The question to ask.
+        :type question: str
+        :param num_strategies: The number of strategies to generate. Defaults to 3.
+        :type num_strategies: int
+        :return: The answer to the question.
+        :rtype: str
+        """
+        self.initialize_controller(question, answer_type = 'natural', num_strategies=num_strategies, debug_level = debug_level, memory_name = memory_name, max_run_tries = max_run_tries)
+        # two steps to generate the plan from prompting to assessing
+        self.step()
+        self.step()
+        output = ""
+        if self.controller.final_thought is not None:
+            output = self.controller.final_thought.state['input']
+        return output
+    
+    def generate_xml(self, debug_level = 0, memory_name = "escargot_memory", max_run_tries = 3):
+        """
+        Generate a plan to answer a question.
+
+        :param question: The question to ask.
+        :type question: str
+        :param num_strategies: The number of strategies to generate. Defaults to 3.
+        :type num_strategies: int
+        :return: The answer to the question.
+        :rtype: str
+        """
+        if self.controller is None:
+            return "No controller initialized."
+        if self.controller.final_thought["previous_phase"] != "plan_assessment":
+            return "Controller is not in planning phase."
+        # two steps to generate the plan from prompting to assessing
+        self.step()
+        self.step()
+        output = ""
+        if self.controller.final_thought is not None:
+            output = self.controller.final_thought.state['input']
+        return output

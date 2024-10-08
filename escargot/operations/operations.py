@@ -214,7 +214,10 @@ class Generate(Operation):
                     )
                     for response in lm_responses:
                         responses.append(response)
-                        new_state = parser.parse_generate_answer(base_state, response)
+                        if len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] == "output":
+                            new_state = parser.parse_generate_answer(temp_state, response)
+                        else:
+                            new_state = parser.parse_generate_answer(base_state, response)
                         new_states.append(new_state)
                         self.logger.debug("Response from LM: %s", response)
                     break

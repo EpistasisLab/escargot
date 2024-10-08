@@ -34,6 +34,7 @@ class Coder:
         Initialize the Coder instance with the logger.
         """
         self.local_context = {}
+        self.local_context_by_step = {}
         self.step_output = {}
         self.executed_code = {}
         self.instructions = {}
@@ -103,6 +104,6 @@ class Coder:
                 self.step_output[step_id] = local_context
                 self.local_context = self.local_context | local_context
         logger.info(f"Step output: {self.step_output}")
-
+        self.local_context_by_step[step_id] = self.local_context.copy()
         return code,compiled
     

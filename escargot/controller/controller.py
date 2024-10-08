@@ -58,6 +58,34 @@ class Controller:
         self.execution_queue = [
             operation for operation in self.graph.operations if operation.can_be_executed()
         ]
+    
+    def get_execution_queue(self) -> List[str]:
+        """
+        Get the execution queue.
+
+        :return: The execution queue.
+        """
+        return [operation.get_thoughts()[0].predecessors[0].state["previous_phase"] for operation in self.execution_queue]
+    
+    def get_current_operation(self) -> Optional[str]:
+        """
+        Get the current operation being executed.
+
+        :return: The name of the current operation, or None if no operation is being executed.
+        """
+        if not self.execution_queue:
+            return None
+        return self.execution_queue[0].predecessors[0].get_thoughts()[0].state["previous_phase"]
+    
+    def get_next_operation(self) -> Optional[str]:
+        """
+        Get the next operation to be executed.
+
+        :return: The name of the next operation, or None if no operation is left to execute.
+        """
+        if not self.execution_queue:
+            return None
+        return self.execution_queue[0].predecessors[0].get_thoughts()[0].state["phase"]
 
     def execute_step(self) -> Optional[Thought]:
         """
