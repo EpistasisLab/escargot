@@ -18,33 +18,16 @@ ESCARGOT significantly outperforms industry-standard RAG methods, particularly i
 
 ## Results
 
-<div style="text-align: center;">{'MCQ_1hop.json': {'correct': 436,
-  'total': 498,
-  'percentage': 87.55020080321285},
- 'MCQ_2hop.json': {'correct': 344,
-  'total': 419,
-  'percentage': 82.10023866348448},
- 'OpenEnded_1hop.json': {'correct': 449.2901074539051,
-  'total': 508,
-  'percentage': 88.44293453817029},
- 'OpenEnded_2hop.json': {'correct': 386.08493085483076,
-  'total': 450,
-  'percentage': 85.7966513010735},
- 'True_or_False_1hop.json': {'correct': 478,
-  'total': 560,
-  'percentage': 85.35714285714285},
- 'True_or_False_2hop.json': {'correct': 385,
-  'total': 540,
-  'percentage': 71.29629629629629}}
+<div style="text-align: center;">
 
 | **Dataset**                                      | **GPT 3.5 Turbo/GPT 4o-mini** | **Standard RAG<br>(GPT3.5 Turbo/GPT4o-mini)**  | **KRAGEN (GPT3.5 Turbo)** | **ESCARGOT<br>(GPT3.5/GPT4o-mini)**       |
 |--------------------------------------------------|-------------------|----------|-------------|--------------------|
-| Openended 1-hop (508 questions)                  | 3.3%   / 4.2%           | 50.2% / 1.0%   | 53.1%    | 81.0% / **88.4%**          |
-| Openended 2-hop (450 questions)                  | 3.5%   / 4.9%           | 12.8% / 1.1%   | 19.9%    | **91.8%** / 85.8%          |
-| True/False 1-hop (560 questions)                 | 55.9%  /  60.5%          | 73.0% / 85.2%  | 80.2%    | 80.7% / **85.4%**          |
-| True/False 2-hop (540 questions)                 | 26.7%  /  59.4%         | 64.4% / 75.6%  | 62.4%    | **77.6%%** / 71.3          |
-| Multiple Choice 1-hop (498 questions)            | 42.6% /   58.2%           | 77.7% / 88.8%   | 65.1%    | **94.6%** / 87.6%           |
-| Multiple Choice 2-hop (419 questions)            | 49.9% /   61.3%          | 81.9% / 86.4%   | 62.2%    | **94.2%** / 82.1%           |
+| Openended 1-hop (508 questions)                  | 3.3%   / 4.2%           | 50.2% / 55.5%   | 53.1%    | 81.0% / **88.4%**          |
+| Openended 2-hop (450 questions)                  | 3.5%   / 4.9%           | 12.8% / 23.1%   | 19.9%    | **91.8%** / 85.8%          |
+| True/False 1-hop (560 questions)                 | 55.9%  /  60.5%          | 73.0% / 85.2%  | 80.2%    | 80.7% / **90.9%**          |
+| True/False 2-hop (540 questions)                 | 26.7%  /  59.4%         | 64.4% / 75.6%  | 62.4%    | **77.6%%** / 74.1          |
+| Multiple Choice 1-hop (498 questions)            | 42.6% /   58.2%           | 77.7% / 88.8%   | 65.1%    | **94.6%** / 93.4%           |
+| Multiple Choice 2-hop (419 questions)            | 49.9% /   61.3%          | 81.9% / 86.4%   | 62.2%    | **94.2%** / 89.5%           |
 
 </div>
 
