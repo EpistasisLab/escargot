@@ -134,6 +134,7 @@ class MemgraphClient:
                     memgraph_results = list(memgraph_results)
                     if memgraph_results != []:
                         empty_responses = False
+                        
                 except Exception as e:
                     self.logger.error(f"Error in memgraph: {e}, trying again {iter}")
             self.logger.info(f"Memgraph results: {memgraph_results}")
@@ -151,4 +152,4 @@ class MemgraphClient:
             # results = list(set(results))
             # self.cache[statement] = [response,results]
 
-            return memgraph_results
+            return memgraph_results, response

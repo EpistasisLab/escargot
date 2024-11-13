@@ -1,3 +1,4 @@
+import os
 import escargot.language_models as language_models
 import logging
 import io
@@ -8,8 +9,14 @@ import escargot.memory as memory
 #vectorized knowledge
 from escargot.vector_db.weaviate import WeaviateClient
 
+from escargot.parser import ESCARGOTParser
+from escargot.prompter import ESCARGOTPrompter
+from escargot.coder import Coder
+
 #memgraph Cypher
 import escargot.cypher.memgraph as memgraph
+
+import dill as pickle
 
 class Escargot:
 
@@ -107,15 +114,13 @@ class Escargot:
         # Create the Controller
         got = got()
         try:
-            from escargot.parser import ESCARGOTParser
-            from escargot.prompter import ESCARGOTPrompter
-            
             self.controller = controller.Controller(
                 self.lm, 
                 got, 
                 ESCARGOTPrompter(memgraph_client = self.memgraph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
                 ESCARGOTParser(self.logger),
                 self.logger,
+                Coder(),
                 {
                     "question": question,
                     "input": "",
@@ -146,10 +151,12 @@ class Escargot:
 
         return output
     
-    def initialize_controller(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0):
+    def initialize_controller(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "escargot_memory", max_run_tries = 3):
         if self.controller is not None:
             del self.controller
             self.controller = None
+
+        self.memory = memory.Memory(self.lm, collection_name = memory_name)
 
         #setup logger
         log_stream, c_handler, f_handler = self.setup_logger(debug_level)
@@ -165,14 +172,13 @@ class Escargot:
         # Create the Controller
         got = got()
         try:
-            from escargot.parser import ESCARGOTParser
-            from escargot.prompter import ESCARGOTPrompter
             self.controller = controller.Controller(
                 self.lm, 
                 got, 
                 ESCARGOTPrompter(memgraph_client = self.memgraph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
                 ESCARGOTParser(self.logger),
                 self.logger,
+                Coder(),
                 {
                     "question": question,
                     "input": "",
@@ -214,6 +220,10 @@ class Escargot:
         else:
             return "No language model available."
         
+    def go_to_phase(self, phase):
+        if self.controller is not None:
+            self.controller.go_to_phase(phase)
+        
     def generate_plan(self, question, num_strategies=3, debug_level = 0, memory_name = "escargot_memory", max_run_tries = 3):
         """
         Generate a plan to answer a question.
@@ -234,21 +244,17 @@ class Escargot:
             output = self.controller.final_thought.state['input']
         return output
     
-    def generate_xml(self, debug_level = 0, memory_name = "escargot_memory", max_run_tries = 3):
+    def generate_code_from_plans(self):
         """
-        Generate a plan to answer a question.
+        Generate code from plans.
 
-        :param question: The question to ask.
-        :type question: str
-        :param num_strategies: The number of strategies to generate. Defaults to 3.
-        :type num_strategies: int
-        :return: The answer to the question.
+        :return: The code generated from the plans.
         :rtype: str
         """
         if self.controller is None:
-            return "No controller initialized."
-        if self.controller.final_thought["previous_phase"] != "plan_assessment":
-            return "Controller is not in planning phase."
+            return ""
+        if self.controller.final_thought.state['previous_phase'] != "plan_assessment":
+            return ""
         # two steps to generate the plan from prompting to assessing
         self.step()
         self.step()
@@ -256,3 +262,34 @@ class Escargot:
         if self.controller.final_thought is not None:
             output = self.controller.final_thought.state['input']
         return output
+    
+    def generate_xml_from_code(self):
+        """
+        Generate XML from code.
+
+        :param code: The code to convert to XML.
+        :type code: str
+        :param instructions: The instructions to convert to XML.
+        :type instructions: str
+        :return: The XML generated from the code.
+        :rtype: str
+        """
+        if self.controller is None:
+            return ""
+        if self.controller.final_thought.state['previous_phase'] != "code_assessment":
+            return ""
+        # two steps to generate the plan from prompting to assessing
+        self.step()
+        output = ""
+        if self.controller.final_thought is not None:
+            output = self.controller.final_thought.state['input']
+        return output
+    
+    def save_controller(self, path = "controller_state.pkl"):
+        if self.controller is not None:
+            self.controller.save_controller_state(path)
+    
+    def load_controller(self, path = "controller_state.pkl"):
+        if self.controller is not None and os.path.exists(path):
+            self.controller = self.controller.load_state(path, self.controller.logger, self.controller.lm, self.controller.prompter, self.controller.parser, self.controller.coder)
+            
