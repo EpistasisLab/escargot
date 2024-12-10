@@ -21,7 +21,12 @@ def determine_and_execute(code_snippet, namespace={}):
         # add numpy to the namespace
         namespace['np'] = np
         # If there's a syntax error, try to parse as statements
+        #change working directory.
+        # code_snippet = 'os.chdir("/content")\n' + code_snippet
         exec(code_snippet, namespace, local_context)
+        #find new assets in the directory
+        # logger.info(f"NEW_ASSET|directory: {os.listdir()}: {new_files}")
+        # logger.info(f"NEW_ASSET|directory: {os.listdir()}: {new_files}")
         return None, 'exec', local_context
 
 class Coder:
@@ -88,11 +93,11 @@ class Coder:
                 logger.warning(f"Could not execute code: {code}. Encountered exception: {e}")
                 self.local_context = backup_local_context.copy()
                 #debug using the prompter and using the error message
-                # prompt = prompter.generate_debug_code_prompt(code, instruction, e)
-                # code =prompter.lm.get_response_texts(
-                #     prompter.lm.query(prompt, num_responses=1)
-                # )[0]
-                code = prompter.adjust_code(code, instruction, context)
+                prompt = prompter.generate_debug_code_prompt(code, instruction, e)
+                code =prompter.lm.get_response_texts(
+                    prompter.lm.query(prompt, num_responses=1)
+                )[0]
+                # code = prompter.adjust_code(code, instruction, context)
                 tries -= 1
         if compiled:
             self.executed_code[step_id] = code

@@ -236,7 +236,7 @@ class Generate(Operation):
             new_states = [new_states[0]]
             new_states[0]["input"] = base_state["input"][highest_score_index]
             new_states[0]["scores"] = sum_scores
-            if new_states[0]["phase"] == "python_conversion":
+            if "full_plan" not in new_states[0] and (new_states[0]["phase"] == "python_conversion" or new_states[0]["phase"] == "plan_multihop"):
                 new_states[0]["full_plan"] = new_states[0]["input"]
                 self.logger.warning("Strategy:\n%s", new_states[0]["input"])
             new_states[0].pop("select_highest_score")
