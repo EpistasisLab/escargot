@@ -78,6 +78,7 @@ class MultiAgentManager:
                     file_descriptions, plans = retrieve_from_chat_history(self.chat_history, self.chat_id, self.message_id)
                     agent.file_descriptions = file_descriptions
                     agent.plans = plans
+                    plans += "\n" + content
                 if hasattr(agent, "dataframe_columns"):
                     agent.dataframe_columns = retrieve_dataset_columns()
 
@@ -90,7 +91,7 @@ class MultiAgentManager:
                         keys = list(result.keys())
                         result = result[keys[0]]
                     new_files = list(set(os.listdir('logs/'+str(self.chat_id))) - set(files))
-                    with open('logs/'+str(self.chat_id)+'/'+str(self.message_id)+'.pkl', 'wb') as f:
+                    with open('logs/'+str(self.chat_id)+'/checkpoint-'+str(self.message_id)+'.pkl', 'wb') as f:
                         dill.dump(result, f)
 
                     for file in new_files:
