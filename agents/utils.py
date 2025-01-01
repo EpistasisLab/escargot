@@ -318,7 +318,7 @@ def retrieve_from_chat_history(chat_history, chat_id, message_id):
 
     #get the plans
     for current_message_id, message in chat_history.items():
-        if int(current_message_id) > message_id:
+        if int(current_message_id) >= message_id:
             continue
         file_descriptions = retrieve_file_descriptions(chat_id, int(current_message_id))
         all_file_descriptions += file_descriptions
