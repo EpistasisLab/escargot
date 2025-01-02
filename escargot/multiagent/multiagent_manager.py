@@ -111,6 +111,13 @@ class MultiAgentManager:
                             with open('logs/'+str(self.chat_id)+'/'+file, 'r') as f:
                                 print(f.read())
 
+                        elif file.endswith('.pkl'):
+                            #preview what's in the pickle file
+                            print(f"Displaying pickle file: {file}")
+                            with open('logs/'+str(self.chat_id)+'/'+file, 'rb') as f:
+                                print(dill.load(f))
+            
+
                 else:
                     print(f'{escargot_agent} error')
                     return None

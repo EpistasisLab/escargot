@@ -135,6 +135,7 @@ Do NOT assume that you will get the exact columns when you are going to create a
 When creating a new dataset, if possible, make your best judgement on trying keeping the target or outcome variable for the dataset.
 Do NOT use "eval" or "exec" operations for the code generation.
 If you generate any plots or any visualizations, generate code that will save them in the working directory. Do NOT show the plots or display them in the notebook.
+If you are saving a file that can be stored in a csv file, save it as a csv in the working directory.
 
 You are performing the last step in the following:
 {steps}
