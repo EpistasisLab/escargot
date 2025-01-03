@@ -38,7 +38,10 @@ class MultiAgentManager:
         #get history from ('logs/'+str(chat_id)+'/chat_history.json')
         if os.path.exists('logs/'+str(self.chat_id)+'/chat_history.json'):
             with open('logs/'+str(self.chat_id)+'/chat_history.json', 'r') as f:
-                self.chat_history = json.load(f)
+                chat_history = json.load(f)
+                
+            chat_history = {int(k): v for k, v in chat_history.items()}
+            self.chat_history = chat_history
         else:
             self.chat_history = {}
 
@@ -122,8 +125,8 @@ class MultiAgentManager:
                     print(f'{escargot_agent} error')
                     return None
 
+                
                 self.chat_history[self.message_id] = {'agent': escargot_agent, 'message': content, 'result': result}
-                self.message_id += 1
                 with open('logs/'+str(self.chat_id)+'/chat_history.json', 'w') as f:
                     json.dump(self.chat_history, f)
                 return result
