@@ -147,3 +147,4 @@ class MultiAgentManager:
             if os.path.isfile('logs/'+str(self.chat_id)+'/'+file):
                 shutil.copy('logs/'+str(self.chat_id)+'/'+file, 'logs/'+str(chat_id)+'/'+file)
         print(f"Chat {self.chat_id} saved to chat {chat_id}")
+        self.chat_id = chat_id
