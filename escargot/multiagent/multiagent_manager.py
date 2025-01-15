@@ -6,6 +6,7 @@ import sys
 import os 
 from utils import retrieve_dataset_columns, retrieve_file_descriptions, retrieve_plans, retrieve_from_chat_history
 import dill
+import shutil
 
 class MultiAgentManager:
     def __init__(self, config, agents, chat_id = None, message_id = None, debug_level = 1):
@@ -134,4 +135,15 @@ class MultiAgentManager:
             print("Error: message must start with '@'")
         return None 
             
-                
+    #function to save the current chat to a new one
+    #copies over all assets
+    def save_chat(self, chat_id):
+        if not os.path.exists('logs/'+str(chat_id)):
+            os.mkdir('logs/'+str(chat_id))
+        files = os.listdir('logs/'+str(self.chat_id))
+        #copy over all files with shutil
+        for file in files:
+            #make sure it's not a directory
+            if os.path.isfile('logs/'+str(self.chat_id)+'/'+file):
+                shutil.copy('logs/'+str(self.chat_id)+'/'+file, 'logs/'+str(chat_id)+'/'+file)
+        print(f"Chat {self.chat_id} saved to chat {chat_id}")
