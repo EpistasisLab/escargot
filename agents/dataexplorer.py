@@ -380,7 +380,7 @@ class DataExplorerEscargot(Escargot):
                 DataExplorerESCARGOTPrompter(lm=self.lm, logger = self.logger),
                 DataExplorerESCARGOTParser(self.logger),
                 self.logger,
-                Coder(),
+                Coder(file_descriptions = self.file_descriptions),
                 {
                     "question": question,
                     "input": "",

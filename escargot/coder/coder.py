@@ -34,7 +34,7 @@ class Coder:
     Coder class to manage the code generation and execution.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, file_descriptions = "") -> None:
         """
         Initialize the Coder instance with the logger.
         """
@@ -43,6 +43,7 @@ class Coder:
         self.step_output = {}
         self.executed_code = {}
         self.instructions = {}
+        self.file_descriptions = file_descriptions
 
     def execute_code(self, code: str, instruction: str, step_id: str, prompter: ESCARGOTPrompter, logger: logging.Logger, full_code = "") -> str:
         """

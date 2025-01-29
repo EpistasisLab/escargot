@@ -203,6 +203,8 @@ def retrieve_file_descriptions(chat_id, step_limit = float('inf')):
     #get all pkl files in the directory
     import dill as pickle
     pkl_files = [f for f in os.listdir('logs/'+str(chat_id)) if f.endswith('.pkl') and f.startswith('checkpoint-')]
+    #order files by step
+    pkl_files.sort(key=lambda x: int(x.split('-')[1].split('.')[0]))
     file_descriptions = []
     #load all pkl files
     for f in pkl_files:
@@ -213,7 +215,7 @@ def retrieve_file_descriptions(chat_id, step_limit = float('inf')):
             #split the step and the file name
             message_id, step_id = step.split('-')
             #if the step is greater than the limit, skip the file
-            if int(step_id) > step_limit:
+            if int(step_id) >= step_limit:
                 continue
 
             pickle_info = {'file': f, 'Step': step_id}
@@ -315,13 +317,11 @@ def final_operation(operations_graph):
 def retrieve_from_chat_history(chat_history, chat_id, message_id):
     all_file_descriptions = []
     all_plans = []
-
+    all_file_descriptions = retrieve_file_descriptions(chat_id, message_id)
     #get the plans
     for current_message_id, message in chat_history.items():
         if int(current_message_id) >= message_id:
             continue
-        file_descriptions = retrieve_file_descriptions(chat_id, int(current_message_id))
-        all_file_descriptions += file_descriptions
         all_plans.append(message['message'])
 
     return all_file_descriptions, all_plans
