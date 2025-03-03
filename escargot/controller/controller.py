@@ -15,6 +15,8 @@ from escargot.prompter import ESCARGOTPrompter
 from escargot.parser import ESCARGOTParser
 from escargot.coder import Coder
 import copy
+import dill as pickle
+import os
 
 class Controller:
     """
@@ -30,6 +32,7 @@ class Controller:
         prompter: ESCARGOTPrompter,
         parser: ESCARGOTParser,
         logger: logging.Logger,
+        coder: Coder,
         problem_parameters: Dict[str, Any],
     ) -> None:
         """
@@ -49,7 +52,7 @@ class Controller:
         self.execution_queue = []
         self.max_run_tries = 3
         self.max_operation_tries = 2
-        self.coder = Coder()
+        self.coder = coder
 
     def initialize_execution_queue(self) -> None:
         """
@@ -58,6 +61,34 @@ class Controller:
         self.execution_queue = [
             operation for operation in self.graph.operations if operation.can_be_executed()
         ]
+    
+    def get_execution_queue(self) -> List[str]:
+        """
+        Get the execution queue.
+
+        :return: The execution queue.
+        """
+        return [operation.get_thoughts()[0].predecessors[0].state["previous_phase"] for operation in self.execution_queue]
+    
+    def get_current_operation(self) -> Optional[str]:
+        """
+        Get the current operation being executed.
+
+        :return: The name of the current operation, or None if no operation is being executed.
+        """
+        if not self.execution_queue:
+            return None
+        return self.execution_queue[0].predecessors[0].get_thoughts()[0].state["previous_phase"]
+    
+    def get_next_operation(self) -> Optional[str]:
+        """
+        Get the next operation to be executed.
+
+        :return: The name of the next operation, or None if no operation is left to execute.
+        """
+        if not self.execution_queue:
+            return None
+        return self.execution_queue[0].predecessors[0].get_thoughts()[0].state["phase"]
 
     def execute_step(self) -> Optional[Thought]:
         """
@@ -166,3 +197,71 @@ class Controller:
 
         with open(path, "w") as file:
             json.dump(output, file, indent=2)
+
+    def save_controller_state(self, path: str) -> None:
+        if path == "":
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            path = os.path.join(current_dir, "controller_state.pkl")
+
+        logger = self.logger
+        lm = self.lm
+        prompter = self.prompter
+        parser = self.parser
+        coder = self.coder
+
+        self.logger = None
+        self.lm = None
+        self.prompter = None
+        self.parser = None
+        self.coder = None
+
+        with open(path, "wb") as file:
+            pickle.dump(self, file)
+
+        self.logger = logger
+        self.lm = lm
+        self.prompter = prompter
+        self.parser = parser
+        self.coder = coder
+        self.logger.info("Controller state saved to %s", path)
+
+    @staticmethod
+    def load_state(file_path: str, logger, lm, prompter, parser, coder):
+        """
+        Load the state of the controller from a file.
+
+        :param file_path: The path to the file from which the state will be loaded.
+        :param logger: The logger to be restored.
+        :param lm: The language model to be restored.
+        :param prompter: The prompter to be restored.
+        :param parser: The parser to be restored.
+        :param coder: The coder to be restored.
+        :return: The controller instance with the loaded state.
+        """
+        with open(file_path, 'rb') as file:
+            controller = pickle.load(file)
+
+        # Restore non-pickleable objects
+        controller.logger = logger
+        controller.lm = lm
+        controller.prompter = prompter
+        controller.parser = parser
+        controller.coder = coder
+
+        controller.logger.info("Controller state loaded from %s", file_path)
+        return controller
+
+    def go_to_phase(self, phase: str) -> None:
+        """
+        Go to a specific phase in the graph of operations.
+
+        :param phase: The phase to go to.
+        """
+        # Find the operation corresponding to the given phase
+        for operation in self.graph.operations:
+            if operation.get_thoughts()[0].state["phase"] == phase:
+                self.execution_queue = [operation]
+                self.logger.info("Moved to phase %s", phase)
+                return
+        
+        self.logger.error("Phase %s not found in the graph of operations", phase)

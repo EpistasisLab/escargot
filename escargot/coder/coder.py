@@ -21,7 +21,12 @@ def determine_and_execute(code_snippet, namespace={}):
         # add numpy to the namespace
         namespace['np'] = np
         # If there's a syntax error, try to parse as statements
+        #change working directory.
+        # code_snippet = 'os.chdir("/content")\n' + code_snippet
         exec(code_snippet, namespace, local_context)
+        #find new assets in the directory
+        # logger.info(f"NEW_ASSET|directory: {os.listdir()}: {new_files}")
+        # logger.info(f"NEW_ASSET|directory: {os.listdir()}: {new_files}")
         return None, 'exec', local_context
 
 class Coder:
@@ -29,16 +34,18 @@ class Coder:
     Coder class to manage the code generation and execution.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, file_descriptions = "") -> None:
         """
         Initialize the Coder instance with the logger.
         """
         self.local_context = {}
+        self.local_context_by_step = {}
         self.step_output = {}
         self.executed_code = {}
         self.instructions = {}
+        self.file_descriptions = file_descriptions
 
-    def execute_code(self, code: str, instruction: str, step_id: str, prompter: ESCARGOTPrompter, logger: logging.Logger) -> str:
+    def execute_code(self, code: str, instruction: str, step_id: str, prompter: ESCARGOTPrompter, logger: logging.Logger, full_code = "") -> str:
         """
         Execute the code and return the output.
 
@@ -63,7 +70,7 @@ class Coder:
             # code = prompter.adjust_code(code, instruction, context)
 
         def knowledge_extract(request):
-            return prompter.get_knowledge(request,instruction)
+            return prompter.get_knowledge(request,instruction,code,full_code)
         # Add the knowledge_extract function to the local context
         self.local_context["knowledge_extract"] = knowledge_extract
         self.local_context["prompter"] = prompter
@@ -87,11 +94,11 @@ class Coder:
                 logger.warning(f"Could not execute code: {code}. Encountered exception: {e}")
                 self.local_context = backup_local_context.copy()
                 #debug using the prompter and using the error message
-                # prompt = prompter.generate_debug_code_prompt(code, instruction, e)
-                # code =prompter.lm.get_response_texts(
-                #     prompter.lm.query(prompt, num_responses=1)
-                # )[0]
-                code = prompter.adjust_code(code, instruction, context)
+                prompt = prompter.generate_debug_code_prompt(code, instruction, e)
+                code =prompter.lm.get_response_texts(
+                    prompter.lm.query(prompt, num_responses=1)
+                )[0]
+                # code = prompter.adjust_code(code, instruction, context)
                 tries -= 1
         if compiled:
             self.executed_code[step_id] = code
@@ -103,6 +110,6 @@ class Coder:
                 self.step_output[step_id] = local_context
                 self.local_context = self.local_context | local_context
         logger.info(f"Step output: {self.step_output}")
-
+        self.local_context_by_step[step_id] = self.local_context.copy()
         return code,compiled
     

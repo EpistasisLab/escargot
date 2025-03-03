@@ -54,9 +54,15 @@ coverage.xml
 .pytest_cache/
 cover/
 
+*.pkl
+agents/logs/*
+
 # Translations
 *.mo
 *.pot
+
+#memory stuff
+escargot_memory/
 
 # Django stuff:
 *.log

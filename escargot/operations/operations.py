@@ -188,7 +188,7 @@ class Generate(Operation):
             self.logger.debug("Prompt for LM: \n%s", prompts[-1])
         elif "StepID" in base_state and "instruction" in base_state and base_state["instruction"]["Code"] is not None:
             code = base_state["instruction"]["Code"][0]
-            new_code, compiled = self.coder.execute_code(code, base_state["instruction"]["Instruction"], base_state["StepID"], prompter, self.logger)
+            new_code, compiled = self.coder.execute_code(code, base_state["instruction"]["Instruction"], base_state["StepID"], prompter, self.logger, base_state["full_code"])
             new_state  = {**base_state, "input": new_code, "compiled": compiled}
             new_state["instructions"][int(base_state["StepID"])-1]['Code'] = [new_code]
             new_states.append(new_state)
@@ -214,7 +214,10 @@ class Generate(Operation):
                     )
                     for response in lm_responses:
                         responses.append(response)
-                        new_state = parser.parse_generate_answer(base_state, response)
+                        if len(self.thoughts) > 0 and self.thoughts[-1].state["phase"] == "output":
+                            new_state = parser.parse_generate_answer(temp_state, response)
+                        else:
+                            new_state = parser.parse_generate_answer(base_state, response)
                         new_states.append(new_state)
                         self.logger.debug("Response from LM: %s", response)
                     break
@@ -233,7 +236,7 @@ class Generate(Operation):
             new_states = [new_states[0]]
             new_states[0]["input"] = base_state["input"][highest_score_index]
             new_states[0]["scores"] = sum_scores
-            if new_states[0]["phase"] == "python_conversion":
+            if "full_plan" not in new_states[0] and (new_states[0]["phase"] == "python_conversion" or new_states[0]["phase"] == "plan_multihop"):
                 new_states[0]["full_plan"] = new_states[0]["input"]
                 self.logger.warning("Strategy:\n%s", new_states[0]["input"])
             new_states[0].pop("select_highest_score")
@@ -311,6 +314,8 @@ class Generate(Operation):
                         if type(self.thoughts[-1].state["input"]) == str:
                             self.thoughts[-1].state["input"] = [self.thoughts[-1].state["input"]]
                         self.thoughts[-1].state["input"].append(new_state["input"])
+                        if self.thoughts[-1].state["phase"] == "code_assessment":
+                            self.thoughts[-1].state["full_code"] = new_state["input"]
                         continue
                     elif self.thoughts[-1].state["phase"] == "output":
                         self.thoughts[-1].state["input"] = new_state["input"]

@@ -52,9 +52,9 @@ class AzureGPT(AbstractLanguageModel):
         self.api_version: str = self.config["api_version"]
         if self.api_version == "":
             self.logger.warning("OPENAI_API_VERSION is not set")
-        self.api_key: str = os.getenv("OPENAI_API_KEY", self.config["api_key"])
+        self.api_key: str = os.getenv("AZURE_API_KEY", self.config["api_key"])
         if self.api_key == "":
-            raise ValueError("OPENAI_API_KEY is not set")
+            raise ValueError("AZURE_API_KEY is not set")
         self.response_cache: Dict[str, List[ChatCompletion]] = {}
         # Initialize the OpenAI Client
         self.client = AzureOpenAI(api_key=self.api_key,azure_endpoint=self.api_base,api_version=self.api_version)
