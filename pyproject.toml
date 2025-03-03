@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "escargot"
-version = "0.0.2"
+version = "0.0.3"
 authors = [
   { name="Nicholas Matsumoto", email="nicholas.matsumoto@csmc.edu" }
 ]
