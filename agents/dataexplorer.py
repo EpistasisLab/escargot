@@ -341,7 +341,7 @@ class DataExplorerEscargot(Escargot):
         self.controller = None
         self.operations_graph = None
         self.vdb = None
-        self.memgraph_client = None
+        self.graph_client = None
         self.dataframe_columns = dataframe_columns
         self.file_descriptions = file_descriptions
         self.plans = plans

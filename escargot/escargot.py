@@ -15,6 +15,7 @@ from escargot.coder import Coder
 
 #memgraph Cypher
 import escargot.cypher.memgraph as memgraph
+import escargot.cypher.neo4j as neo4j
 
 import dill as pickle
 
@@ -34,12 +35,15 @@ class Escargot:
         self.operations_graph = None
         if self.vdb.client is None:
             self.vdb = None
-        self.memgraph_client = memgraph.MemgraphClient(config, logger)
-        if self.memgraph_client.memgraph is None:
-            self.memgraph_client = None
+        if "memgraph" in config: 
+            self.graph_client = memgraph.MemgraphClient(config, logger)
+        if "neo4j" in config:
+            self.graph_client = neo4j.Neo4jClient(config, logger)
+        if self.graph_client.client is None:
+            self.graph_client = None
         else:
             if node_types == "" or relationship_types == "":
-                self.node_types, self.relationship_types = self.memgraph_client.get_schema()
+                self.node_types, self.relationship_types = self.graph_client.get_schema()
             else:
                 self.node_types = node_types
                 self.relationship_types = relationship_types
@@ -117,7 +121,7 @@ class Escargot:
             self.controller = controller.Controller(
                 self.lm, 
                 got, 
-                ESCARGOTPrompter(memgraph_client = self.memgraph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
+                ESCARGOTPrompter(graph_client = self.graph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
                 ESCARGOTParser(self.logger),
                 self.logger,
                 Coder(),
@@ -175,7 +179,7 @@ class Escargot:
             self.controller = controller.Controller(
                 self.lm, 
                 got, 
-                ESCARGOTPrompter(memgraph_client = self.memgraph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
+                ESCARGOTPrompter(graph_client = self.graph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
                 ESCARGOTParser(self.logger),
                 self.logger,
                 Coder(),

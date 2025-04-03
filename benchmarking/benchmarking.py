@@ -43,7 +43,7 @@ BODYPARTOVEREXPRESSESGENE
 DISEASELOCALIZESTOANATOMY
 DISEASEASSOCIATESWITHDISEASET""", 
 model_name="azuregpt35-16k")
-escargot.memgraph_client.schema = """Node properties are the following:
+escargot.graph_client.schema = """Node properties are the following:
 Node name: 'BiologicalProcess', Node properties: ['commonName']
 Node name: 'BodyPart', Node properties: ['commonName']
 Node name: 'CellularComponent', Node properties: ['commonName']
@@ -88,7 +88,7 @@ for json_file in json_files:
         response = ''
         tries = 0
         while response == '' and tries < 3:
-            escargot.memgraph_client.cache = {}
+            escargot.graph_client.cache = {}
             try:
                 response = escargot.ask(question['question'], answer_type= "array",debug_level = 0)
             except Exception as e:

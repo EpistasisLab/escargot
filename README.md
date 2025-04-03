@@ -174,7 +174,7 @@ DISEASELOCALIZESTOANATOMY
 DISEASEASSOCIATESWITHDISEASET""",
     model_name="azuregpt35-16k"
 )
-escargot.memgraph_client.schema = """Node properties are the following:
+escargot.graph_client.schema = """Node properties are the following:
 Node name: 'BiologicalProcess', Node properties: ['commonName']
 Node name: 'BodyPart', Node properties: ['commonName']
 Node name: 'CellularComponent', Node properties: ['commonName']

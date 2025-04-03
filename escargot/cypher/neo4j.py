@@ -1,11 +1,10 @@
-from gqlalchemy import Memgraph
-#from langchain_community.graphs import MemgraphGraph
+from gqlalchemy import Neo4j
 import os
 from typing import Dict
 import json
 import logging
 
-class MemgraphClient:
+class Neo4jClient:
     def __init__(self, config_path, logger):
         self.logger = logger
         self.config: Dict = None
@@ -13,29 +12,27 @@ class MemgraphClient:
             self.config = config_path
         else:
             self.load_config(config_path)
-        if "memgraph" not in self.config:
+        if "neo4j" not in self.config:
             self.client = None
         else:
-            self.config: Dict = self.config["memgraph"]
+            self.config: Dict = self.config["neo4j"]
             self.host = self.config["host"]
             self.port = self.config["port"]
-            self.client = Memgraph(host=self.host, port=self.port)
+            self.client = Neo4j(host=self.host, port=self.port)
             self.num_responses = 7
             self.cache = {}
             self.schema = None
 
     def get_schema(self):
         SCHEMA_QUERY = """
-        CALL llm_util.schema("raw")
-        YIELD *
-        RETURN *
+        CALL db.schema.visualization()
         """
         tries = 3
         while tries > 0:
             try:
                 db_structured_schema = list(self.client.execute_and_fetch(SCHEMA_QUERY))
                 assert db_structured_schema is not None
-                structured_schema = db_structured_schema[0]['schema']
+                structured_schema = db_structured_schema[0]
                 break
             except Exception as e:
                 tries -= 1
@@ -44,18 +41,19 @@ class MemgraphClient:
         formatted_node_props = []
         node_names = []
 
-        for node_name, properties in structured_schema["node_props"].items():
+        for node in structured_schema["nodes"]:
+            node_name = list(node.labels)[0]
             node_names.append(node_name)
             formatted_node_props.append(
-                f"Node name: '{node_name}', Node properties: {properties}"
+                f"Node name: '{node_name}', Node properties: {dict(node)['indexes']}"
             )
 
         formatted_rels = []
         relationship_names = []
         for rel in structured_schema["relationships"]:
-            relationship_names.append(rel['type'])
+            relationship_names.append(rel.type)
             formatted_rels.append(
-                f"(:{rel['start']})-[:{rel['type']}]->(:{rel['end']})"
+                f"(:{list(rel.nodes[0].labels)[0]})-[:{rel.type}]->(:{list(rel.nodes[1].labels)[0]})"
             )
 
         self.schema = "\n".join(

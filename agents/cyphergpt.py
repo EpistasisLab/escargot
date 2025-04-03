@@ -263,10 +263,10 @@ Describe the thought process above, and then answer the question. Do not include
 
 Question:
 {question}"""
-    def __init__(self,vector_db = None, lm = None, memgraph_client = None, node_types = "", relationship_types = "", relationship_scores = "", logger: logging.Logger = None):
+    def __init__(self,vector_db = None, lm = None, graph_client = None, node_types = "", relationship_types = "", relationship_scores = "", logger: logging.Logger = None):
         self.vector_db = vector_db
         self.lm = lm
-        self.memgraph_client = memgraph_client
+        self.graph_client = graph_client
         self.node_types = node_types
         self.relationship_types = relationship_types
         self.relationship_scores = relationship_scores
@@ -301,7 +301,7 @@ Question:
         assert question is not None, "Question should not be None."
         if method == "got":
             if (input is None or input == "") and kwargs["phase"] == "querying":
-                return self.memgraph_prompt_1.format(schema=self.memgraph_client.schema) + str(self.memgraph_prompt_2) + str(self.memgraph_prompt_3.format(instruction= question))
+                return self.memgraph_prompt_1.format(schema=self.graph_client.schema) + str(self.memgraph_prompt_2) + str(self.memgraph_prompt_3.format(instruction= question))
             elif kwargs["phase"] == "plan_assessment":
                 return self.plan_assessment_prompt.format(question=question, approach_1=input[0], approach_2=input[1], approach_3=input[2], node_types=self.node_types, relationship_types=self.relationship_types, relationship_scores=self.relationship_scores)
             elif kwargs["phase"] == "python_conversion":
@@ -331,9 +331,9 @@ Question:
         statement_to_embed = knowledge_request
         if statement_to_embed == "" or statement_to_embed is None:
             return []
-        if self.memgraph_client is not None:
-            knowledge_array = list(self.memgraph_client.memgraph.execute_and_fetch(statement_to_embed))
-            # knowledge_array = self.memgraph_client.execute(self.lm, self.memgraph_prompt_1.format(schema=self.memgraph_client.schema) + str(self.memgraph_prompt_2) + str(self.memgraph_prompt_3.format(instruction=str(instruction),cypher=str(statement_to_embed))),str(statement_to_embed))
+        if self.graph_client is not None:
+            knowledge_array = list(self.graph_client.client.execute_and_fetch(statement_to_embed))
+            # knowledge_array = self.graph_client.execute(self.lm, self.memgraph_prompt_1.format(schema=self.graph_client.schema) + str(self.memgraph_prompt_2) + str(self.memgraph_prompt_3.format(instruction=str(instruction),cypher=str(statement_to_embed))),str(statement_to_embed))
             #Identify genes associated with Alzheimer’s disease and filter bodypart linked to both these genes 
 # and Alzheimer’s disease. Then, exclude the genes already associated with Alzheimer’s disease, and rank the
 # remaining genes based on the number of connections they have with the identified bodypart.
@@ -382,12 +382,12 @@ class CypherEscargot(Escargot):
         self.operations_graph = None
         if self.vdb.client is None:
             self.vdb = None
-        self.memgraph_client = memgraph.MemgraphClient(config, logger)
-        if self.memgraph_client.memgraph is None:
-            self.memgraph_client = None
+        self.graph_client = memgraph.MemgraphClient(config, logger)
+        if self.graph_client.client is None:
+            self.graph_client = None
         else:
             if node_types == "" or relationship_types == "":
-                self.node_types, self.relationship_types = self.memgraph_client.get_schema()
+                self.node_types, self.relationship_types = self.graph_client.get_schema()
             else:
                 self.node_types = node_types
                 self.relationship_types = relationship_types
@@ -424,7 +424,7 @@ class CypherEscargot(Escargot):
             self.controller = controller.Controller(
                 self.lm, 
                 got, 
-                CypherESCARGOTPrompter(memgraph_client = self.memgraph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, relationship_scores=self.relationship_scores,logger = self.logger),
+                CypherESCARGOTPrompter(graph_client = self.graph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, relationship_scores=self.relationship_scores,logger = self.logger),
                 CypherESCARGOTParser(self.logger),
                 self.logger,
                 Coder(),

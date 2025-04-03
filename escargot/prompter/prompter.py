@@ -380,10 +380,10 @@ Describe the thought process above, and then answer the question. Do not include
 
 Question:
 {question}"""
-    def __init__(self,vector_db = None, lm = None, memgraph_client = None, node_types = "", relationship_types = "", relationship_scores = "", logger: logging.Logger = None):
+    def __init__(self,vector_db = None, lm = None, graph_client = None, node_types = "", relationship_types = "", relationship_scores = "", logger: logging.Logger = None):
         self.vector_db = vector_db
         self.lm = lm
-        self.memgraph_client = memgraph_client
+        self.graph_client = graph_client
         self.node_types = node_types
         self.relationship_types = relationship_types
         self.relationship_scores = relationship_scores
@@ -454,8 +454,8 @@ Question:
         # statement_to_embed = statement_to_embed[0]
         statement_to_embed_cleaned = statement_to_embed.replace("!","")
         # If it's a cypher query, then execute the query and return the results directly
-        if self.memgraph_client is not None:
-            knowledge_array = self.memgraph_client.execute(self.lm, self.memgraph_prompt_1.format(schema=self.memgraph_client.schema) + str(self.memgraph_prompt_2) + str(self.memgraph_prompt_3.format(instruction=str(instruction),cypher=str(statement_to_embed))),str(statement_to_embed))
+        if self.graph_client is not None:
+            knowledge_array = self.graph_client.execute(self.lm, self.memgraph_prompt_1.format(schema=self.graph_client.schema) + str(self.memgraph_prompt_2) + str(self.memgraph_prompt_3.format(instruction=str(instruction),cypher=str(statement_to_embed))),str(statement_to_embed))
             
             self.logger.info(f"Cypher knowledge for {statement_to_embed}: {str(knowledge_array)}")
 
