@@ -80,6 +80,10 @@ config = {
         "host": "MEMGRAPH_URL",
         "port": 7687
     },
+    "neo4j" : {
+        "host": "NEO4J_URL",
+        "port": 7687
+    },
     "weaviate" : {
         "api_key": "WEAVIATE_API_KEY",
         "url": "WEAVIATE_URL",
