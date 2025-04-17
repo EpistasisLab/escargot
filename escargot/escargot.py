@@ -27,7 +27,7 @@ class Escargot:
         self.log = ""
         self.lm = language_models.AzureGPT(config, model_name=model_name, logger=logger)
         self.vdb = WeaviateClient(config, self.logger)
-        self.memory = None
+        self.memory = memory.Memory(self.lm)
         self.node_types = ""
         self.relationship_types = ""
         self.question = ""
@@ -89,7 +89,7 @@ class Escargot:
     #1: output, instructions, and exceptions
     #2: output, instructions, exceptions, and debug info
     #3: output, instructions, exceptions, debug info, and LLM output
-    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "escargot_memory", max_run_tries = 3):
+    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "default", max_run_tries = 3):
         """
         Ask a question and get an answer.
 
@@ -153,9 +153,24 @@ class Escargot:
         #remove logger
         self.finalize_logger(log_stream, c_handler, f_handler)
 
+        # Generate and store summary in memory if output was successful
+        if output:
+            try:
+                summary_prompt = f"Summarize the key information derived from answering the question: '{question}' with the answer: '{str(output)[:500]}...'. If the answer seems like complex data (list, dict), describe what the data represents rather than listing it."
+                summary = self.quick_chat(summary_prompt) # Use quick_chat for summarization
+                
+                if answer_type == 'natural':
+                    self.memory.store_memory(text=summary)
+                    self.logger.error(f"Stored natural language summary in memory for collection '{self.memory.collection_name}'.")
+                else: # Handles 'array' and potentially other non-natural types
+                    self.memory.store_memory(text=summary, data=output)
+                    self.logger.error(f"Stored summary with pickled data in memory for collection '{self.memory.collection_name}'.")
+            except Exception as e:
+                self.logger.error(f"Failed to generate or store summary in memory: {e}")
+
         return output
     
-    def initialize_controller(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "escargot_memory", max_run_tries = 3):
+    def initialize_controller(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "default", max_run_tries = 3):
         if self.controller is not None:
             del self.controller
             self.controller = None
@@ -224,11 +239,36 @@ class Escargot:
         else:
             return "No language model available."
         
+    def query_memory(self, query: str, max_results: int = 10, metadata: dict = None):
+        """
+        Query the persistent memory collection.
+
+        :param query: The query string to search for in the memory.
+        :type query: str
+        :param max_results: The maximum number of results to return. Defaults to 10.
+        :type max_results: int
+        :param metadata: Optional metadata dictionary to filter results. Defaults to None.
+        :type metadata: dict
+        :return: The query results from the memory collection.
+        :rtype: dict
+        """
+        if self.memory is None:
+            self.logger.error("Memory not initialized. Call 'ask' or 'initialize_controller' first.")
+            return None # Or return an empty dict: {"ids": [], "distances": []}
+        
+        try:
+            results = self.memory.query_collection(query, max_results=max_results, metadata=metadata)
+            self.logger.info(f"Queried memory collection '{self.memory.collection_name}' with '{query}'. Found {len(results.get('ids', [[]])[0])} results.")
+            return results
+        except Exception as e:
+            self.logger.error(f"Failed to query memory collection '{self.memory.collection_name}': {e}")
+            return None
+
     def go_to_phase(self, phase):
         if self.controller is not None:
             self.controller.go_to_phase(phase)
         
-    def generate_plan(self, question, num_strategies=3, debug_level = 0, memory_name = "escargot_memory", max_run_tries = 3):
+    def generate_plan(self, question, num_strategies=3, debug_level = 0, memory_name = "default", max_run_tries = 3):
         """
         Generate a plan to answer a question.
 
