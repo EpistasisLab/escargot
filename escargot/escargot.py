@@ -25,7 +25,10 @@ class Escargot:
         logger = logging.getLogger(__name__)
         self.logger = logger
         self.log = ""
-        self.lm = language_models.AzureGPT(config, model_name=model_name, logger=logger)
+        if 'ollama' in config:
+            self.lm = language_models.Ollama(config, model_name=model_name, logger=logger)
+        if 'azuregpt' in config:
+            self.lm = language_models.AzureGPT(config, model_name=model_name, logger=logger)
         self.vdb = WeaviateClient(config, self.logger)
         self.memory = memory.Memory(self.lm)
         self.node_types = ""

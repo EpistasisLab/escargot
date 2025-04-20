@@ -28,6 +28,7 @@ dependencies = [
   "matplotlib>=3.9.1",
   "seaborn>=0.11.2",
   "scikit-learn>=1.0.1",
+  "ollama>=0.4.8"
 ]
 
 [project.urls]
