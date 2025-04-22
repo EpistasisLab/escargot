@@ -17,6 +17,7 @@ from escargot.coder import Coder
 import copy
 import dill as pickle
 import os
+import threading
 
 class Controller:
     """
@@ -34,6 +35,7 @@ class Controller:
         logger: logging.Logger,
         coder: Coder,
         problem_parameters: Dict[str, Any],
+        cancellation_event: Optional[threading.Event] = None,
     ) -> None:
         """
         Initialize the Controller instance with the language model,
@@ -53,6 +55,7 @@ class Controller:
         self.max_run_tries = 3
         self.max_operation_tries = 2
         self.coder = coder
+        self.cancellation_event = cancellation_event
 
     def initialize_execution_queue(self) -> None:
         """
@@ -147,9 +150,24 @@ class Controller:
             self.initialize_execution_queue()
             
             while self.execution_queue:
+                if self.cancellation_event and self.cancellation_event.is_set():
+                    self.logger.warning("Cancellation requested, stopping controller run.")
+                    if self.final_thought is None:
+                        base_state = self.problem_parameters.copy()
+                        base_state["phase"] = "cancelled"
+                        base_state["input"] = "Operation cancelled due to timeout."
+                        self.final_thought = Thought(base_state)
+                    else:
+                        self.final_thought.state["phase"] = "cancelled"
+                        self.final_thought.state["input"] = "Operation cancelled due to timeout."
+                        self.final_thought.state["error"] = "Timeout"
+
+                    self.run_executed = False
+                    break
+
                 self.execute_step()
 
-            if self.final_thought.state["phase"] == "output":
+            if self.final_thought and self.final_thought.state["phase"] == "output":
                 self.logger.info("All operations executed")
                 self.run_executed = True
 

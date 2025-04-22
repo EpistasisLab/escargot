@@ -2,6 +2,8 @@ import os
 import escargot.language_models as language_models
 import logging
 import io
+import threading
+import time
 from escargot import operations
 import escargot.controller as controller
 import escargot.memory as memory
@@ -87,14 +89,82 @@ class Escargot:
         self.logger.removeHandler(f_handler)
         f_handler.close()
 
+    def _ask_worker(self, question, answer_type, num_strategies, memory_name, max_run_tries, result_container, exception_container, cancellation_event):
+        # Logger is managed by the main 'ask' function thread
+        try:
+            # Create the Controller
+            def got() -> operations.GraphOfOperations:
+                operations_graph = operations.GraphOfOperations()
+                instruction_node = operations.Generate(1, 1)
+                operations_graph.append_operation(instruction_node)
+                return operations_graph
+
+            got_instance = got() # Renamed from got to avoid conflict
+
+            self.controller = controller.Controller(
+                 self.lm,
+                 got_instance, # Use the instance
+                 ESCARGOTPrompter(graph_client = self.graph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
+                 ESCARGOTParser(self.logger),
+                 self.logger,
+                 Coder(),
+                 {
+                     "question": question,
+                     "input": "",
+                     "phase": "planning",
+                     "method" : "got",
+                     "num_branches_response": num_strategies,
+                     "answer_type": answer_type
+                 },
+                 cancellation_event=cancellation_event # Pass the event
+            )
+            self.controller.max_run_tries = max_run_tries
+            self.controller.run() # This is the potentially long-running part
+
+            self.operations_graph = self.controller.graph.operations
+            output = ""
+            if self.controller.final_thought is not None:
+                if answer_type == 'natural':
+                    output = self.controller.final_thought.state['input']
+                elif answer_type == 'array':
+                    # output = list(list(self.controller.coder.step_output.values())[-1].values())[-1] # Original line commented out for safety, assuming the next line is the intended one
+                    output = list(self.controller.coder.step_output.values())[-1]
+
+
+            self.logger.warning(f"Output: {output}")
+
+            # Generate and store summary in memory if output was successful
+            if output:
+                try:
+                    summary_prompt = f"Summarize the key information derived from answering the question: '{question}' with the answer: '{str(output)[:500]}...'. If the answer seems like complex data (list, dict), describe what the data represents rather than listing it."
+                    summary = self.quick_chat(summary_prompt) # Use quick_chat for summarization
+
+                    if answer_type == 'natural':
+                        self.memory.store_memory(text=summary)
+                        self.logger.error(f"Stored natural language summary in memory for collection '{self.memory.collection_name}'.")
+                    else: # Handles 'array' and potentially other non-natural types
+                        self.memory.store_memory(text=summary, data=output)
+                        self.logger.error(f"Stored summary with pickled data in memory for collection '{self.memory.collection_name}'.")
+                except Exception as e:
+                    self.logger.error(f"Failed to generate or store summary in memory: {e}")
+
+            result_container.append(output) # Store result
+
+        except Exception as e:
+            self.logger.error("Error executing controller in worker thread: %s", e, exc_info=True) # Log traceback
+            exception_container.append(e) # Store exception
+        finally:
+            # Logger finalization happens in the main ask function
+            pass
+
     #debug_level: 0, 1, 2, 3
     #0: no debug, only output
     #1: output, instructions, and exceptions
     #2: output, instructions, exceptions, and debug info
     #3: output, instructions, exceptions, debug info, and LLM output
-    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "default", max_run_tries = 3):
+    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "default", max_run_tries = 3, timeout=120):
         """
-        Ask a question and get an answer.
+        Ask a question and get an answer with an optional timeout.
 
         :param question: The question to ask.
         :type question: str
@@ -102,76 +172,70 @@ class Escargot:
         :type answer_type: str
         :param num_strategies: The number of strategies to generate. Defaults to 3.
         :type num_strategies: int
-        :return: The answer to the question.
-        :rtype: str
+        :param debug_level: Debug level (0-3). Defaults to 0.
+        :type debug_level: int
+        :param memory_name: Name of the memory collection. Defaults to "default".
+        :type memory_name: str
+        :param max_run_tries: Maximum attempts for controller runs. Defaults to 3.
+        :type max_run_tries: int
+        :param timeout: Maximum time in seconds to wait for an answer. Defaults to 120. If <= 0 or None, no timeout.
+        :type timeout: int or None
+        :return: The answer to the question, or a timeout message string.
+        :rtype: str or list (depending on answer_type) or str (timeout message)
         """
-        
+
         self.memory = memory.Memory(self.lm, collection_name = memory_name)
         #setup logger
         log_stream, c_handler, f_handler = self.setup_logger(debug_level)
-        
-        def got() -> operations.GraphOfOperations:
-            operations_graph = operations.GraphOfOperations()
 
-            instruction_node = operations.Generate(1, 1)
-            operations_graph.append_operation(instruction_node)
-            
-            return operations_graph
-        
-        # Create the Controller
-        got = got()
-        try:
-            self.controller = controller.Controller(
-                self.lm, 
-                got, 
-                ESCARGOTPrompter(graph_client = self.graph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
-                ESCARGOTParser(self.logger),
-                self.logger,
-                Coder(),
-                {
-                    "question": question,
-                    "input": "",
-                    "phase": "planning",
-                    "method" : "got",
-                    "num_branches_response": num_strategies,
-                    "answer_type": answer_type
-                }
-            )
-            self.controller.max_run_tries = max_run_tries
-            self.controller.run()
-        except Exception as e:
-            self.logger.error("Error executing controller: %s", e)
+        final_output = f"Timeout occurred after {timeout} seconds." # Default timeout message
+        result_container = []
+        exception_container = []
+        cancellation_event = threading.Event() # Create the event
 
-        self.operations_graph = self.controller.graph.operations
-        output = ""
-        if self.controller.final_thought is not None:
-            if answer_type == 'natural':
-                output = self.controller.final_thought.state['input']
-            elif answer_type == 'array':
-                # output = list(list(self.controller.coder.step_output.values())[-1].values())[-1]
-                output = list(self.controller.coder.step_output.values())[-1]
+        worker_thread = threading.Thread(
+            target=self._ask_worker,
+            args=(question, answer_type, num_strategies, memory_name, max_run_tries, result_container, exception_container, cancellation_event), # Pass event to worker
+            daemon=True # Set thread as daemon so it doesn't block program exit if main thread finishes
+        )
 
-        self.logger.warning(f"Output: {output}")
+        start_time = time.time()
+        worker_thread.start()
 
-        #remove logger
+        # Only apply timeout if timeout is positive
+        effective_timeout = timeout if timeout is not None and timeout > 0 else None
+        worker_thread.join(timeout=effective_timeout)
+        end_time = time.time()
+
+        timed_out = worker_thread.is_alive()
+
+        if timed_out:
+            self.logger.error(f"Timeout reached after {timeout} seconds for question: '{question}'")
+            # Note: Without a cooperative cancellation mechanism in Controller,
+            # the thread might continue running in the background even after timeout is reported.
+            # The daemon=True setting helps ensure it doesn't prevent program exit.
+            cancellation_event.set() # Signal the worker thread to stop
+            final_output = f"Timeout occurred after {timeout} seconds."
+        else:
+            # Thread finished
+            if exception_container:
+                 # Log the exception caught in the thread
+                 exc = exception_container[0]
+                 self.logger.error(f"Exception occurred in worker thread: {exc}", exc_info=True)
+                 # Return an error message or raise the exception
+                 final_output = f"An error occurred during execution: {exc}"
+                 # Alternatively, to propagate the exception: raise exc
+            elif result_container:
+                final_output = result_container[0]
+            else:
+                 # Should not happen if thread finished without exception and without result
+                 self.logger.error("Worker thread finished but no result or exception was captured.")
+                 final_output = "An unexpected error occurred after thread completion."
+
+        # Finalize logger regardless of outcome
         self.finalize_logger(log_stream, c_handler, f_handler)
 
-        # Generate and store summary in memory if output was successful
-        if output:
-            try:
-                summary_prompt = f"Summarize the key information derived from answering the question: '{question}' with the answer: '{str(output)[:500]}...'. If the answer seems like complex data (list, dict), describe what the data represents rather than listing it."
-                summary = self.quick_chat(summary_prompt) # Use quick_chat for summarization
-                
-                if answer_type == 'natural':
-                    self.memory.store_memory(text=summary)
-                    self.logger.error(f"Stored natural language summary in memory for collection '{self.memory.collection_name}'.")
-                else: # Handles 'array' and potentially other non-natural types
-                    self.memory.store_memory(text=summary, data=output)
-                    self.logger.error(f"Stored summary with pickled data in memory for collection '{self.memory.collection_name}'.")
-            except Exception as e:
-                self.logger.error(f"Failed to generate or store summary in memory: {e}")
-
-        return output
+        return final_output
     
     def initialize_controller(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "default", max_run_tries = 3):
         if self.controller is not None:
