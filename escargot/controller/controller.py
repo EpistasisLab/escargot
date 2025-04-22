@@ -35,11 +35,13 @@ class Controller:
         logger: logging.Logger,
         coder: Coder,
         problem_parameters: Dict[str, Any],
+        max_tokens: Optional[int] = None,
         cancellation_event: Optional[threading.Event] = None,
     ) -> None:
         """
         Initialize the Controller instance with the language model,
-        operations graph, prompter, parser, and problem parameters.
+        operations graph, prompter, parser, coder, problem parameters,
+        and optional token limit and cancellation event.
         """
         self.logger = logger
         self.lm = lm
@@ -55,6 +57,7 @@ class Controller:
         self.max_run_tries = 3
         self.max_operation_tries = 2
         self.coder = coder
+        self.max_tokens = max_tokens
         self.cancellation_event = cancellation_event
 
     def initialize_execution_queue(self) -> None:
@@ -150,6 +153,26 @@ class Controller:
             self.initialize_execution_queue()
             
             while self.execution_queue:
+                # Log current token count if debug level >= 1 (WARNING)
+                if self.logger.isEnabledFor(logging.WARNING):
+                    current_tokens = self.lm.prompt_tokens + self.lm.completion_tokens
+                    self.logger.warning(f"Current token count: {current_tokens} (Prompt: {self.lm.prompt_tokens}, Completion: {self.lm.completion_tokens})")
+
+                if self.max_tokens is not None and (self.lm.prompt_tokens + self.lm.completion_tokens) > self.max_tokens:
+                    self.logger.warning(f"Token limit ({self.max_tokens}) exceeded ({self.lm.prompt_tokens + self.lm.completion_tokens} tokens). Stopping controller run.")
+                    if self.final_thought is None:
+                        base_state = self.problem_parameters.copy()
+                        base_state["phase"] = "token_limit_exceeded"
+                        base_state["input"] = f"Operation cancelled due to token limit ({self.max_tokens}) exceeded."
+                        self.final_thought = Thought(base_state)
+                    else:
+                        self.final_thought.state["phase"] = "token_limit_exceeded"
+                        self.final_thought.state["input"] = f"Operation cancelled due to token limit ({self.max_tokens}) exceeded."
+                        self.final_thought.state["error"] = "TokenLimitExceeded"
+
+                    self.run_executed = False
+                    break
+
                 if self.cancellation_event and self.cancellation_event.is_set():
                     self.logger.warning("Cancellation requested, stopping controller run.")
                     if self.final_thought is None:
@@ -246,7 +269,10 @@ class Controller:
     @staticmethod
     def load_state(file_path: str, logger, lm, prompter, parser, coder):
         """
-        Load the state of the controller from a file.
+        Load the state of the controller from a file. Restores non-pickleable objects.
+
+        Note: This method assumes the saved state might not have `max_tokens`.
+        It initializes `max_tokens` to None after loading if it's not present.
 
         :param file_path: The path to the file from which the state will be loaded.
         :param logger: The logger to be restored.
@@ -265,6 +291,10 @@ class Controller:
         controller.prompter = prompter
         controller.parser = parser
         controller.coder = coder
+
+        # Initialize max_tokens if it wasn't part of the saved state
+        if not hasattr(controller, 'max_tokens'):
+            controller.max_tokens = None
 
         controller.logger.info("Controller state loaded from %s", file_path)
         return controller

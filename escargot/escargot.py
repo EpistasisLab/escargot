@@ -20,6 +20,7 @@ import escargot.cypher.memgraph as memgraph
 import escargot.cypher.neo4j as neo4j
 
 import dill as pickle
+from typing import Optional
 
 class Escargot:
 
@@ -89,21 +90,21 @@ class Escargot:
         self.logger.removeHandler(f_handler)
         f_handler.close()
 
-    def _ask_worker(self, question, answer_type, num_strategies, memory_name, max_run_tries, result_container, exception_container, cancellation_event):
+    def _ask_worker(self, question, answer_type, num_strategies, memory_name, max_run_tries, result_container, exception_container, cancellation_event, max_tokens):
         # Logger is managed by the main 'ask' function thread
         try:
             # Create the Controller
-            def got() -> operations.GraphOfOperations:
+            def create_initial_graph() -> operations.GraphOfOperations:
                 operations_graph = operations.GraphOfOperations()
                 instruction_node = operations.Generate(1, 1)
                 operations_graph.append_operation(instruction_node)
                 return operations_graph
 
-            got_instance = got() # Renamed from got to avoid conflict
+            initial_graph = create_initial_graph()
 
             self.controller = controller.Controller(
                  self.lm,
-                 got_instance, # Use the instance
+                 initial_graph,
                  ESCARGOTPrompter(graph_client = self.graph_client,vector_db = self.vdb, lm=self.lm,node_types=self.node_types,relationship_types=self.relationship_types, logger = self.logger),
                  ESCARGOTParser(self.logger),
                  self.logger,
@@ -116,7 +117,8 @@ class Escargot:
                      "num_branches_response": num_strategies,
                      "answer_type": answer_type
                  },
-                 cancellation_event=cancellation_event # Pass the event
+                 cancellation_event=cancellation_event, # Pass the event
+                 max_tokens=max_tokens # Pass max_tokens limit
             )
             self.controller.max_run_tries = max_run_tries
             self.controller.run() # This is the potentially long-running part
@@ -162,7 +164,7 @@ class Escargot:
     #1: output, instructions, and exceptions
     #2: output, instructions, exceptions, and debug info
     #3: output, instructions, exceptions, debug info, and LLM output
-    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "default", max_run_tries = 3, timeout=120):
+    def ask(self, question, answer_type = 'natural', num_strategies=3, debug_level = 0, memory_name = "default", max_run_tries = 3, timeout: Optional[int] = 120, max_tokens: Optional[int] = None):
         """
         Ask a question and get an answer with an optional timeout.
 
@@ -172,16 +174,18 @@ class Escargot:
         :type answer_type: str
         :param num_strategies: The number of strategies to generate. Defaults to 3.
         :type num_strategies: int
-        :param debug_level: Debug level (0-3). Defaults to 0.
+        :param debug_level: Debug level (0=Error, 1=Warning, 2=Info, 3=Debug). Defaults to 0.
         :type debug_level: int
         :param memory_name: Name of the memory collection. Defaults to "default".
         :type memory_name: str
         :param max_run_tries: Maximum attempts for controller runs. Defaults to 3.
         :type max_run_tries: int
         :param timeout: Maximum time in seconds to wait for an answer. Defaults to 120. If <= 0 or None, no timeout.
-        :type timeout: int or None
-        :return: The answer to the question, or a timeout message string.
-        :rtype: str or list (depending on answer_type) or str (timeout message)
+        :type timeout: Optional[int]
+        :param max_tokens: Maximum total tokens (prompt + completion) allowed. Defaults to None (no limit).
+        :type max_tokens: Optional[int]
+        :return: The answer, or a message indicating timeout, token limit exceeded, or error.
+        :rtype: str or list (depending on answer_type) or str (status/error message)
         """
 
         self.memory = memory.Memory(self.lm, collection_name = memory_name)
@@ -195,7 +199,7 @@ class Escargot:
 
         worker_thread = threading.Thread(
             target=self._ask_worker,
-            args=(question, answer_type, num_strategies, memory_name, max_run_tries, result_container, exception_container, cancellation_event), # Pass event to worker
+            args=(question, answer_type, num_strategies, memory_name, max_run_tries, result_container, exception_container, cancellation_event, max_tokens), # Pass event and max_tokens to worker
             daemon=True # Set thread as daemon so it doesn't block program exit if main thread finishes
         )
 
@@ -218,13 +222,17 @@ class Escargot:
             final_output = f"Timeout occurred after {timeout} seconds."
         else:
             # Thread finished
+            final_thought_phase = self.controller.final_thought.state.get("phase") if self.controller and self.controller.final_thought else None
+
             if exception_container:
                  # Log the exception caught in the thread
                  exc = exception_container[0]
                  self.logger.error(f"Exception occurred in worker thread: {exc}", exc_info=True)
                  # Return an error message or raise the exception
                  final_output = f"An error occurred during execution: {exc}"
-                 # Alternatively, to propagate the exception: raise exc
+            elif final_thought_phase == "token_limit_exceeded":
+                 self.logger.error(f"Token limit ({max_tokens}) exceeded.")
+                 final_output = f"Operation cancelled: Token limit ({max_tokens}) exceeded."
             elif result_container:
                 final_output = result_container[0]
             else:
