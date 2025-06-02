@@ -16,6 +16,8 @@ of both code and knowledge requests, in contrast to the black-box nature of LLM-
 
 ESCARGOT significantly outperforms industry-standard RAG methods, particularly in open-ended questions that demand high precision. ESCARGOT also offers greater transparency in its reasoning process, allowing for the vetting of both code and knowledge requests, in contrast to the black-box nature of LLM-only or RAG-based approaches.
 
+Link to Bioinformatics Application Note: https://academic.oup.com/bioinformatics/article/41/2/btaf031/7972741
+
 ## Results
 
 <div style="text-align: center;">
